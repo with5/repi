@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=repi
+Name[zh_CN]=磨耳朵
+Comment=Loop English study material aloud, sentence by sentence
+Comment[zh_CN]=把英文资料一句句循环朗读，磨耳朵
+Exec=repi
+Icon=repi
+Terminal=false
+Categories=Education;
+StartupWMClass=repi

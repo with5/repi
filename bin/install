@@ -1,0 +1,12 @@
+#!/bin/sh
+# Build a release binary and install it for the current user, without sudo:
+# the binary in ~/.local/bin, the launcher entry and icon under ~/.local/share.
+set -e
+cd "$(dirname "$0")/.."
+prefix="${PREFIX:-$HOME/.local}"
+go build -trimpath -ldflags "-s -w" -o build/repi .
+install -Dm755 build/repi "$prefix/bin/repi"
+install -Dm644 packaging/repi.desktop "$prefix/share/applications/repi.desktop"
+install -Dm644 packaging/repi.svg "$prefix/share/icons/hicolor/scalable/apps/repi.svg"
+update-desktop-database "$prefix/share/applications" 2>/dev/null || true
+echo "installed repi to $prefix"
