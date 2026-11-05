@@ -73,7 +73,7 @@ go build -o repi . && ./repi
 
 ## Usage
 
-1. **New** opens the editor (pre-filled from your clipboard); **File** imports a `.txt` / `.md`.
+1. **新增** (Add) opens a menu: **导入** (Import) reads a `.txt` / `.md`; **URL** fetches an article from a link and fills in its title and body for you to review; **粘贴** (Paste) opens the editor, pre-filled from your clipboard. Pages that need JavaScript or a login cannot be fetched, so paste those instead.
 2. **Save & open** — reading starts immediately. Click any sentence to start from there.
 3. Press **F** for the big screen, then click a word to look it up.
 

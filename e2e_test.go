@@ -67,9 +67,7 @@ func TestViewFlow(t *testing.T) {
 	}
 	defer m.pl.Close()
 	tt := ui.NewTester(m.view, 1000, 720)
-	if err := tt.Click("新建资料"); err != nil {
-		t.Fatal(err)
-	}
+	chooseAdd(t, tt, "粘贴")
 	m.draftText = "The cat sat. It was happy! Was it?"
 	if err := tt.Click("保存并打开"); err != nil {
 		t.Fatal(err)

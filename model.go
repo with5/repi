@@ -60,6 +60,7 @@ type model struct {
 	editID     int
 	draftTitle string
 	draftText  string
+	urlImp     urlImport
 	voiceSel   string
 	speedSel   string
 	hideText   bool

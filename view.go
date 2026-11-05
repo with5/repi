@@ -52,6 +52,7 @@ func (m *model) view(c *ui.Context) {
 	m.saveProgress(false)
 	m.helpOverlay(c)
 	m.lookupOverlay(c)
+	m.urlImportOverlay(c)
 
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
 		m.sidebar(c)
@@ -71,7 +72,7 @@ func (m *model) view(c *ui.Context) {
 			default:
 				ui.Column(c).Fill().Center().Gap(8).Children(func() {
 					ui.Text(c, "磨耳朵").FontSize(28).Bold()
-					ui.Text(c, "新建一篇英文资料，让它一遍遍循环朗读。").TextColor(t.TextMuted)
+					ui.Text(c, "新增一篇英文资料，让它一遍遍循环朗读。").TextColor(t.TextMuted)
 				})
 			}
 		})
@@ -83,12 +84,17 @@ func (m *model) sidebar(c *ui.Context) {
 	ui.Column(c).Width(240).Shrink(0).PaddingY(12).Gap(8).BorderWidth(0, 1, 0, 0).BorderColor(t.Border).Children(func() {
 		ui.Row(c).Padding(0, 16).AlignItems(ui.Center).Gap(6).Children(func() {
 			ui.Text(c, "资料").Bold().Grow(1)
-			if ui.Button(c, "文件").Label("从文件新建").Clicked() {
-				m.importFile()
-			}
-			if ui.PrimaryButton(c, "新建").Label("新建资料").Clicked() {
-				m.startEdit(store.Material{}, c.Services().ReadClipboard())
-			}
+			ui.PrimaryButton(c, "新增").Label("新增资料").PopoverMenuButton(func(menu *ui.Menu) {
+				if menu.Item("导入").Chosen() {
+					m.importFile()
+				}
+				if menu.Item("URL").Chosen() {
+					m.openURLImport(c.Services().ReadClipboard())
+				}
+				if menu.Item("粘贴").Chosen() {
+					m.startEdit(store.Material{}, c.Services().ReadClipboard())
+				}
+			})
 		})
 		sel := ""
 		if m.open {
