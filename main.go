@@ -22,7 +22,7 @@ func main() {
 	})
 	mygo.App.WhenReady(func() {
 		m.win = mygo.NewWindow(mygo.WindowOptions{
-			Title:   "repi · 磨耳朵",
+			Title:   "Repi · 磨耳朵",
 			Width:   1000,
 			Height:  720,
 			Content: ui.View(m.view),
