@@ -10,7 +10,6 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"syscall"
 	"unicode"
 )
 
@@ -55,7 +54,7 @@ func Open(path string) (*Dict, error) {
 	if err != nil {
 		return nil, err
 	}
-	data, err := syscall.Mmap(int(f.Fd()), 0, int(fi.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
+	data, err := mmap(f, int(fi.Size()))
 	if err != nil { // not mappable: read it instead
 		if data, err = os.ReadFile(path); err != nil {
 			return nil, err

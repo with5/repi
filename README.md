@@ -7,7 +7,7 @@
 A local-first listening trainer. Paste any English text, and Repi reads it back with a neural TTS model, on repeat, with a word-by-word karaoke view, an offline dictionary and instant translation.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square&logo=go&logoColor=white)](https://go.dev)
-[![Platform](https://img.shields.io/badge/platform-Linux-FCC624?style=flat-square&logo=linux&logoColor=black)](#installation)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-FCC624?style=flat-square)](#installation)
 [![TTS](https://img.shields.io/badge/TTS-Kokoro--82M-4a9a68?style=flat-square)](https://huggingface.co/hexgrad/Kokoro-82M)
 [![Offline](https://img.shields.io/badge/works-offline-success?style=flat-square)](#why-repi)
 [![Built with MyGo](https://img.shields.io/badge/built%20with-MyGo-8A2BE2?style=flat-square)](https://github.com/egoist/mygo)
@@ -38,7 +38,7 @@ Listening skill comes from hearing the same material many times, not from hearin
 
 ### Requirements
 
-- Linux
+- Linux (primary), macOS and Windows (experimental: cross-compiled, not yet tested on real hardware). Prebuilt binaries are attached to each [release](https://github.com/with5/repi/releases); on Windows the Kokoro venv lives under `%LOCALAPPDATA%\repi\kokoro`, on macOS under `~/Library/Application Support/repi/kokoro`.
 - [Go](https://go.dev/dl/) 1.27+
 - At least one TTS backend (see below)
 

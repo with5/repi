@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"github.com/egoist/mygo"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -98,12 +97,7 @@ func newModel(out player.Output) *model {
 		m.setupErr = "读取资料库失败：" + err.Error()
 	}
 	m.st = st
-	cache := os.Getenv("XDG_CACHE_HOME")
-	if cache == "" {
-		home, _ := os.UserHomeDir()
-		cache = filepath.Join(home, ".cache")
-	}
-	audioDir := filepath.Join(cache, "repi", "audio")
+	audioDir := filepath.Join(store.CacheDir(), "audio")
 	m.piper = &tts.Piper{Cache: audioDir, Voices: tts.ListVoices(tts.DefaultVoiceDirs...)}
 	m.kokoro = &tts.Kokoro{Dir: filepath.Join(filepath.Dir(store.DefaultPath()), "kokoro"), Cache: audioDir}
 	m.synth = &tts.Router{Piper: m.piper, Kokoro: m.kokoro}
@@ -115,7 +109,7 @@ func newModel(out player.Output) *model {
 	s := st.Settings()
 	m.voice, m.speed, m.hideText, m.favorites = s.Voice, s.Speed, s.HideText, s.Favorites
 	m.bigScreen, m.bigFont, m.showTrans = s.BigScreen, s.BigFont, s.Translate
-	m.initDict(filepath.Dir(store.DefaultPath()), filepath.Join(cache, "repi", "translate"))
+	m.initDict(filepath.Dir(store.DefaultPath()), filepath.Join(store.CacheDir(), "translate"))
 	if m.bigFont < minBigFont || m.bigFont > maxBigFont {
 		m.bigFont = defaultBigFont
 	}

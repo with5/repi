@@ -51,15 +51,8 @@ type Store struct {
 	f    file
 }
 
-// DefaultPath is ~/.local/share/repi/materials.json (XDG_DATA_HOME aware).
-func DefaultPath() string {
-	dir := os.Getenv("XDG_DATA_HOME")
-	if dir == "" {
-		home, _ := os.UserHomeDir()
-		dir = filepath.Join(home, ".local", "share")
-	}
-	return filepath.Join(dir, "repi", "materials.json")
-}
+// DefaultPath is materials.json inside DataDir.
+func DefaultPath() string { return filepath.Join(DataDir(), "materials.json") }
 
 // Open loads the store at path; a missing file gives an empty store.
 func Open(path string) (*Store, error) {

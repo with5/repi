@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -79,7 +80,12 @@ type Kokoro struct {
 }
 
 // Python is the interpreter of the worker's virtual environment.
-func (k *Kokoro) Python() string { return filepath.Join(k.Dir, "venv", "bin", "python") }
+func (k *Kokoro) Python() string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(k.Dir, "venv", "Scripts", "python.exe")
+	}
+	return filepath.Join(k.Dir, "venv", "bin", "python")
+}
 
 // Check reports why Kokoro cannot be used, or nil.
 func (k *Kokoro) Check() error {
@@ -112,6 +118,7 @@ func (k *Kokoro) start() error {
 		return err
 	}
 	cmd := exec.Command(k.Python(), "-u", script)
+	hideWindow(cmd)
 	cmd.Env = append(os.Environ(), "TOKENIZERS_PARALLELISM=false", "PYTHONWARNINGS=ignore")
 	in, err := cmd.StdinPipe()
 	if err != nil {

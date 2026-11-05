@@ -28,7 +28,12 @@ type Voice struct {
 }
 
 // DefaultVoiceDirs are searched for piper voices.
-var DefaultVoiceDirs = []string{"/usr/share/piper-voices/en", os.ExpandEnv("$HOME/.local/share/piper-voices")}
+var DefaultVoiceDirs = voiceDirs()
+
+func voiceDirs() []string {
+	home, _ := os.UserHomeDir()
+	return []string{"/usr/share/piper-voices/en", filepath.Join(home, ".local", "share", "piper-voices")}
+}
 
 // ListVoices finds *.onnx voice models under dirs, sorted by name.
 func ListVoices(dirs ...string) []Voice {
@@ -116,6 +121,7 @@ func (p *Piper) Synth(ctx context.Context, sentence, voice string, speed float64
 	tmp := out + ".tmp"
 	cmd := exec.CommandContext(ctx, p.bin(), "-q", "-m", model, "-f", tmp,
 		"--length_scale", strconv.FormatFloat(1/speed, 'f', 3, 64), "--sentence_silence", "0.1")
+	hideWindow(cmd)
 	cmd.Stdin = strings.NewReader(sentence + "\n")
 	if b, err := cmd.CombinedOutput(); err != nil {
 		os.Remove(tmp)
