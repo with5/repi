@@ -135,6 +135,10 @@ go test ./...
 
 [MyGo](https://github.com/egoist/mygo) · [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) · [piper](https://github.com/rhasspy/piper) · [ECDICT](https://github.com/skywind3000/ECDICT) · [MyMemory](https://mymemory.translated.net)
 
+## 社区认可与友情链接
+
+[LINUX DO - 新的理想型社区](https://linux.do)
+
 ## 许可证
 
 暂未声明许可证。接受外部贡献前请先添加 `LICENSE` 文件。

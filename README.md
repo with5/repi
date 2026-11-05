@@ -135,6 +135,10 @@ Issues and pull requests are welcome. If you're planning something big, open an 
 
 [MyGo](https://github.com/egoist/mygo) · [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) · [piper](https://github.com/rhasspy/piper) · [ECDICT](https://github.com/skywind3000/ECDICT) · [MyMemory](https://mymemory.translated.net)
 
+## Community & Friends
+
+[LINUX DO - A New Ideal Community](https://linux.do)
+
 ## License
 
 No license has been declared yet. Add a `LICENSE` file before accepting outside contributions.
