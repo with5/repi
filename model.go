@@ -73,8 +73,11 @@ type model struct {
 	lookup     lookupCard
 	ticking    atomic.Bool // a frame is scheduled while the big screen follows the sound
 	big        bigCache
-	showVoices bool // the voice panel replaces the main area
-	showHelp   bool // the shortcut overlay is open
+	showVoices bool         // the voice panel replaces the main area
+	showHelp   bool         // the shortcut overlay is open
+	listenID   atomic.Int64 // material whose sentences the player is playing
+	showStats  bool         // the statistics panel replaces the main area
+	dailyGoal  int          // minutes of listening aimed for each day; 0 means none
 
 	query       string // search box
 	tagFilter   string // tag chosen in the sidebar
@@ -109,6 +112,7 @@ func newModel(out player.Output) *model {
 	s := st.Settings()
 	m.voice, m.speed, m.hideText, m.favorites = s.Voice, s.Speed, s.HideText, s.Favorites
 	m.bigScreen, m.bigFont, m.showTrans = s.BigScreen, s.BigFont, s.Translate
+	m.dailyGoal = s.DailyGoal
 	m.initDict(filepath.Dir(store.DefaultPath()), filepath.Join(store.CacheDir(), "translate"))
 	if m.bigFont < minBigFont || m.bigFont > maxBigFont {
 		m.bigFont = defaultBigFont
@@ -132,6 +136,7 @@ func newModel(out player.Output) *model {
 	m.voiceSel, m.speedSel = m.voice, speedLabel(m.speed)
 
 	m.pl = player.New(m, out, m.invalidate)
+	m.pl.OnHeard = func(d time.Duration) { m.st.AddListen(time.Now(), int(m.listenID.Load()), d) }
 	m.refresh()
 	if id := s.LastOpened; id != 0 {
 		if mat, ok := st.Get(id); ok {
@@ -212,6 +217,7 @@ func (m *model) markReady(gen, i int) {
 func (m *model) openMaterial(mat store.Material) {
 	m.saveProgress(true)
 	m.cur, m.open, m.editing = mat, true, false
+	m.listenID.Store(int64(mat.ID))
 	m.lastIdx = -1
 	m.mu.Lock()
 	m.sentences = text.Split(mat.Text)
@@ -230,6 +236,7 @@ func (m *model) saveSettings() {
 	s := m.st.Settings()
 	s.Voice, s.Speed, s.HideText, s.Favorites = m.voice, m.speed, m.hideText, m.favorites
 	s.BigScreen, s.BigFont, s.Translate = m.bigScreen, m.bigFont, m.showTrans
+	s.DailyGoal = m.dailyGoal
 	if m.open {
 		s.LastOpened = m.cur.ID
 	}
@@ -386,6 +393,7 @@ func (m *model) remove(id int) {
 		}
 		m.mu.Unlock()
 		m.open = false
+		m.listenID.Store(0)
 	}
 	m.st.Delete(id)
 	m.refresh()

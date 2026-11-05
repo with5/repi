@@ -36,19 +36,28 @@ type Settings struct {
 	// BigScreen shows the sentence being read in large type, BigFont its size.
 	BigScreen bool `json:"bigScreen,omitempty"`
 	BigFont   int  `json:"bigFont,omitempty"`
+	// DailyGoal is the listening aimed for each day, in minutes; 0 means none.
+	DailyGoal int `json:"dailyGoal,omitempty"`
 }
 
 type file struct {
 	Settings  Settings    `json:"settings"`
 	Materials []*Material `json:"materials"`
 	Next      int         `json:"next"`
+	// Listened is the time heard per local day ("2006-01-02"), in milliseconds.
+	Listened map[string]int64 `json:"listened,omitempty"`
+	// PerMaterial is the time heard per material ID, in milliseconds. It is
+	// kept apart from Material so that saving a stale copy cannot reset it.
+	PerMaterial map[int]int64 `json:"perMaterial,omitempty"`
 }
 
 // Store is safe for use from several goroutines.
 type Store struct {
-	path string
-	mu   sync.Mutex
-	f    file
+	path      string
+	mu        sync.Mutex
+	f         file
+	lastStats time.Time  // last save caused by AddListen
+	saveMu    sync.Mutex // one Save at a time: they share the temporary file
 }
 
 // DefaultPath is materials.json inside DataDir.
@@ -161,12 +170,15 @@ func (s *Store) Delete(id int) {
 		}
 	}
 	s.f.Materials = kept
+	delete(s.f.PerMaterial, id)
 	s.mu.Unlock()
 	s.Save()
 }
 
 // Save writes the file atomically.
 func (s *Store) Save() error {
+	s.saveMu.Lock()
+	defer s.saveMu.Unlock()
 	s.mu.Lock()
 	b, err := json.MarshalIndent(s.f, "", "  ")
 	s.mu.Unlock()

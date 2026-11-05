@@ -60,6 +60,8 @@ func (m *model) view(c *ui.Context) {
 				ui.Text(c, m.setupErr).TextColor(t.Danger)
 			}
 			switch {
+			case m.showStats:
+				m.statsPanel(c)
 			case m.showVoices:
 				m.voicePanel(c)
 			case m.editing:
@@ -94,22 +96,32 @@ func (m *model) sidebar(c *ui.Context) {
 		}
 		var chosen string
 		ui.Column(c).Grow(1).MinHeight(0).Padding(0, 16).Gap(8).Children(func() { chosen = m.library(c) })
-		ui.Row(c).Padding(0, 16).Children(func() {
+		ui.Row(c).Padding(0, 16).Gap(6).Children(func() {
 			label := "音色"
 			if m.showVoices {
 				label = "← 返回"
 			}
 			if ui.Button(c, label).Label("音色管理").Grow(1).Clicked() {
 				m.showVoices = !m.showVoices
+				m.showStats = false
 				if !m.showVoices {
 					m.stopAudition()
 				}
+			}
+			label = "统计"
+			if m.showStats {
+				label = "← 返回"
+			}
+			if ui.Button(c.Key("stats"), label).Label("学习统计").Grow(1).Clicked() {
+				m.showStats = !m.showStats
+				m.showVoices = false
+				m.stopAudition()
 			}
 		})
 		if chosen != sel {
 			if id, err := strconv.Atoi(chosen); err == nil {
 				if mat, ok := m.st.Get(id); ok {
-					m.showVoices = false
+					m.showVoices, m.showStats = false, false
 					m.stopAudition()
 					m.openMaterial(mat)
 				}
@@ -120,7 +132,7 @@ func (m *model) sidebar(c *ui.Context) {
 
 // startEdit opens the editor on mat, with clip as the text of a new one.
 func (m *model) startEdit(mat store.Material, clip string) {
-	m.showVoices = false
+	m.showVoices, m.showStats = false, false
 	m.stopAudition()
 	m.editing, m.editID = true, mat.ID
 	m.draftTitle, m.draftText = mat.Title, mat.Text
@@ -181,6 +193,9 @@ func (m *model) reader(c *ui.Context) {
 
 	ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 		ui.Text(c, m.cur.Title).FontSize(18).Bold().Grow(1).MaxLines(1)
+		if d := m.st.MaterialListened(m.cur.ID); d > 0 {
+			ui.Text(c, "已听 "+fmtListen(d)).TextColor(t.TextMuted).FontSize(12)
+		}
 		rd, total := m.progress()
 		if status := m.kokoro.Status(); status != "" {
 			ui.Text(c, status).TextColor(t.TextMuted).FontSize(12).MaxLines(1)

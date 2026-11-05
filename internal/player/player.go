@@ -98,6 +98,9 @@ type Player struct {
 	out Output
 	// Gap is the silence between sentences, LoopGap between rounds.
 	Gap, LoopGap time.Duration
+	// OnHeard, when set, is called after each sound with how long of it was
+	// heard (all of it unless it was cut short). Set it before playing.
+	OnHeard func(time.Duration)
 
 	notify func()
 
@@ -328,6 +331,11 @@ func (p *Player) playOne(ctx context.Context, i int) error {
 		p.mu.Lock()
 		p.now = nil
 		p.mu.Unlock()
+		if p.OnHeard != nil {
+			if heard := min(h.Position(), h.Duration()); heard > 0 {
+				p.OnHeard(heard)
+			}
+		}
 		h.Stop()
 	}()
 	select {
