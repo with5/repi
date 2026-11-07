@@ -69,3 +69,13 @@ func TestPinAndTagsRoundTrip(t *testing.T) {
 		t.Error("still pinned")
 	}
 }
+
+func TestSettingsMirror(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "m.json")
+	s, _ := Open(path)
+	s.SetSettings(Settings{Mirror: true})
+	s2, err := Open(path)
+	if err != nil || !s2.Settings().Mirror {
+		t.Fatalf("mirror not kept: %v", err)
+	}
+}

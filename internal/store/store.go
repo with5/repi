@@ -38,6 +38,8 @@ type Settings struct {
 	BigFont   int  `json:"bigFont,omitempty"`
 	// DailyGoal is the listening aimed for each day, in minutes; 0 means none.
 	DailyGoal int `json:"dailyGoal,omitempty"`
+	// Mirror makes the one-click Kokoro setup use mirrors in China.
+	Mirror bool `json:"mirror,omitempty"`
 }
 
 type file struct {
