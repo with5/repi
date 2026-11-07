@@ -44,7 +44,9 @@
 
 ### 1. 准备 TTS 后端
 
-**Kokoro-82M**（默认，音质好、GPU/CPU 都很快）。模型约 330MB，首次使用时自动下载。
+**Kokoro-82M**（默认，音质好、GPU/CPU 都很快）。打开 Repi，在「安装 Kokoro 语音引擎」卡片上点 **一键安装**。没有可用音色时它出现在主界面，音色面板顶部也有。Repi 会把 uv、Python 3.12、PyTorch、kokoro 和模型下载到自己的数据目录（约 700MB，选 NVIDIA GPU 加速版约 3.5GB），不改动系统环境。勾选 **使用国内镜像** 改走国内源（清华 PyPI、阿里云 PyTorch、南大 Python、ModelScope）。Intel Mac 不支持，PyTorch 已不再提供对应版本。
+
+<details><summary>手动安装</summary>
 
 ```sh
 mkdir -p ~/.local/share/repi/kokoro && cd ~/.local/share/repi/kokoro
@@ -52,6 +54,8 @@ uv venv --python 3.12 venv
 VIRTUAL_ENV=$PWD/venv uv pip install -U kokoro soundfile pip
 venv/bin/python -m spacy download en_core_web_sm
 ```
+
+</details>
 
 **piper-tts**（可选，CPU 即可）：安装 `piper-tts`，并把英文音色放在 `/usr/share/piper-voices`。
 

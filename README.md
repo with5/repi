@@ -44,7 +44,9 @@ Listening skill comes from hearing the same material many times, not from hearin
 
 ### 1. Set up a TTS backend
 
-**Kokoro-82M** (default; great quality, fast on GPU and CPU). The ~330 MB model is downloaded on first use.
+**Kokoro-82M** (default; great quality, fast on GPU and CPU). Start Repi and click **一键安装** (Install) on the *Install Kokoro* card — it is on the main screen when no voice is installed, and at the top of the **Voices** panel. Repi downloads uv, Python 3.12, PyTorch, kokoro and the model (about 700 MB, about 3.5 GB with the optional NVIDIA GPU build) into its own data folder; nothing system-wide is touched. Tick **使用国内镜像** to use mirrors in China (Tsinghua PyPI, Aliyun PyTorch, NJU Python, ModelScope). Intel Macs are not supported, as PyTorch no longer ships for them.
+
+<details><summary>Manual install</summary>
 
 ```sh
 mkdir -p ~/.local/share/repi/kokoro && cd ~/.local/share/repi/kokoro
@@ -52,6 +54,8 @@ uv venv --python 3.12 venv
 VIRTUAL_ENV=$PWD/venv uv pip install -U kokoro soundfile pip
 venv/bin/python -m spacy download en_core_web_sm
 ```
+
+</details>
 
 **piper-tts** (optional, CPU-friendly): install `piper-tts` and put English voices in `/usr/share/piper-voices`.
 
