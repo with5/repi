@@ -16,6 +16,10 @@ func TestDownload(t *testing.T) {
 	body := []byte("hello wheel")
 	sum := sha256.Sum256(body)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.UserAgent() != userAgent {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 		if r.URL.Path == "/missing" {
 			http.NotFound(w, r)
 			return

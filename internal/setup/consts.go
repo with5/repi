@@ -5,6 +5,8 @@ package setup
 import "errors"
 
 const (
+	userAgent = "repi-setup (+https://github.com/with5/repi)"
+
 	uvVersion     = "0.13.7"
 	pythonVersion = "3.12"
 	torchVersion  = "2.15.0"

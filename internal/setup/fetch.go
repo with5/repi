@@ -22,6 +22,8 @@ func get(ctx context.Context, client *http.Client, url string) (*http.Response, 
 	if err != nil {
 		return nil, err
 	}
+	// The Tsinghua mirror answers 403 to Go's default User-Agent.
+	req.Header.Set("User-Agent", userAgent)
 	name := path.Base(req.URL.Path)
 	resp, err := client.Do(req)
 	if err != nil {
