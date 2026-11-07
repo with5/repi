@@ -53,7 +53,7 @@ func (execRunner) Run(ctx context.Context, env []string, onLine func(string), na
 		return ctx.Err()
 	}
 	if err != nil {
-		return fmt.Errorf("%v：%s", err, strings.Join(last, " / "))
+		return fmt.Errorf("%w：%s", err, strings.Join(last, " / "))
 	}
 	return nil
 }

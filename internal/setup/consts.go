@@ -20,6 +20,7 @@ const (
 	mirrorTorch   = "https://mirrors.aliyun.com/pytorch-wheels/" // + flavor + "/", find-links
 	mirrorPython  = "https://mirror.nju.edu.cn/github-release/astral-sh/python-build-standalone"
 	officialModel = "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/"
+	vcRedistURL   = "https://aka.ms/vs/17/release/vc_redist." // + "x64.exe" or "arm64.exe"
 	mirrorModel   = "https://www.modelscope.cn/models/AI-ModelScope/Kokoro-82M/resolve/master/"
 )
 

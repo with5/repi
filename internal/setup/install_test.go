@@ -29,7 +29,15 @@ type fakeRunner struct {
 	version   string
 	failCheck bool
 	cancel    func() // called on "pip install" when set
+	vcMissing bool   // the self-check fails like PyTorch without the VC++ runtime
+	vcExit    int    // exit code of vc_redist
+	vcRan     bool
 }
+
+type exitErr int
+
+func (e exitErr) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
+func (e exitErr) ExitCode() int { return int(e) }
 
 func (f *fakeRunner) Run(ctx context.Context, env []string, onLine func(string), name string, args ...string) error {
 	f.calls = append(f.calls, call{name, args, env})
@@ -46,7 +54,15 @@ func (f *fakeRunner) Run(ctx context.Context, env []string, onLine func(string),
 	case len(args) > 0 && args[0] == "pip" && f.cancel != nil:
 		f.cancel()
 		return ctx.Err()
+	case strings.HasSuffix(name, "vc_redist.exe"):
+		f.vcRan = true
+		if f.vcExit != 0 {
+			return exitErr(f.vcExit)
+		}
 	case len(args) > 0 && args[0] == "-c":
+		if f.vcMissing && !f.vcRan {
+			return errors.New("OSError: [WinError 126] ... Microsoft Visual C++ Redistributable is not installed ... vc_redist.x64.exe")
+		}
 		if f.failCheck {
 			return errors.New("No module named kokoro")
 		}
@@ -238,5 +254,56 @@ func TestPromoteReplacesOld(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, d)); !os.IsNotExist(err) {
 			t.Errorf("%s left", d)
 		}
+	}
+}
+
+func TestInstallVCRuntime(t *testing.T) {
+	windows := func(r *fakeRunner) (*installer, string) {
+		dir := t.TempDir()
+		os.MkdirAll(filepath.Join(dir, "bin"), 0o755)
+		os.WriteFile(filepath.Join(dir, "bin", "uv.exe"), nil, 0o755) // r.version makes it current
+		r.version = uvVersion
+		in := testInstaller(t, Options{Dir: dir}, r)
+		in.goos = "windows"
+		in.vcRedist = strings.TrimSuffix(in.modelBase, "/") + "/vc_redist.x64.exe"
+		return in, dir
+	}
+	for _, code := range []int{0, 3010, 1638} {
+		r := &fakeRunner{vcMissing: true, vcExit: code}
+		in, dir := windows(r)
+		if err := in.run(context.Background(), func(Progress) {}); err != nil {
+			t.Fatalf("exit %d: %v", code, err)
+		}
+		if !r.vcRan {
+			t.Fatal("vc_redist not run")
+		}
+		if got := r.calls[len(r.calls)-2].args; !slices.Equal(got, []string{"/install", "/passive", "/norestart"}) {
+			t.Errorf("vc_redist args %v", got)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "venv")); err != nil {
+			t.Fatal("venv not promoted after the runtime was installed")
+		}
+		if _, err := os.Stat(filepath.Join(dir, "bin", "vc_redist.exe")); !os.IsNotExist(err) {
+			t.Error("vc_redist.exe left behind")
+		}
+	}
+
+	r := &fakeRunner{vcMissing: true, vcExit: 1602}
+	in, dir := windows(r)
+	if err := in.run(context.Background(), func(Progress) {}); err == nil || !strings.Contains(err.Error(), "授权被取消") {
+		t.Fatalf("declined UAC gives %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "venv")); !os.IsNotExist(err) {
+		t.Fatal("venv promoted without the runtime")
+	}
+
+	// Without the VC++ hint, or off Windows, a failed check is not retried.
+	if needsVCRuntime("linux", errors.New("vc_redist")) || needsVCRuntime("windows", errors.New("No module named kokoro")) {
+		t.Fatal("needsVCRuntime too eager")
+	}
+	r = &fakeRunner{failCheck: true}
+	in, _ = windows(r)
+	if err := in.run(context.Background(), func(Progress) {}); err == nil || r.vcRan {
+		t.Fatalf("err %v, vc_redist ran %v", err, r.vcRan)
 	}
 }

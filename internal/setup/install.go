@@ -69,6 +69,7 @@ type installer struct {
 	pypi         string   // simple index, with a trailing slash
 	modelBase    string   // model repository, with a trailing slash
 	files        []string // model files, tts.KokoroModelFiles
+	vcRedist     string   // Microsoft VC++ redistributable, for Windows
 	progress     func(Progress)
 	cur          Progress
 }
@@ -78,6 +79,10 @@ func newInstaller(o Options, r runner) *installer {
 		pypi: officialPyPI, modelBase: officialModel, files: tts.KokoroModelFiles()}
 	if o.Mirror {
 		in.pypi, in.modelBase = mirrorPyPI, mirrorModel
+	}
+	in.vcRedist = vcRedistURL + "x64.exe"
+	if in.goarch == "arm64" {
+		in.vcRedist = vcRedistURL + "arm64.exe"
 	}
 	return in
 }
@@ -193,10 +198,56 @@ func (in *installer) steps(ctx context.Context, tag, partial string) error {
 	}
 	in.begin(6)
 	check := "import kokoro, soundfile, torch, spacy; spacy.load('en_core_web_sm')"
-	if err := in.r.Run(ctx, in.env(), in.detail, py, "-c", check); err != nil {
+	err = in.r.Run(ctx, in.env(), in.detail, py, "-c", check)
+	if err != nil && needsVCRuntime(in.goos, err) {
+		if err := in.installVCRuntime(ctx); err != nil {
+			return err
+		}
+		err = in.r.Run(ctx, in.env(), in.detail, py, "-c", check)
+	}
+	if err != nil {
 		return err
 	}
 	return promote(in.o.Dir, partial)
+}
+
+// needsVCRuntime reports whether the self-check failed because the Microsoft
+// Visual C++ runtime PyTorch needs on Windows is missing or too old. PyTorch
+// then names vc_redist in its error; WinError 126 is the DLL load failure.
+func needsVCRuntime(goos string, err error) bool {
+	if goos != "windows" {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "vc_redist") || strings.Contains(s, "WinError 126")
+}
+
+// installVCRuntime downloads Microsoft's VC++ redistributable and runs it.
+// It asks for administrator rights itself (one UAC prompt).
+func (in *installer) installVCRuntime(ctx context.Context) error {
+	in.detail("正在下载 Microsoft VC++ 运行库…")
+	exe := filepath.Join(in.o.Dir, "bin", "vc_redist.exe")
+	defer os.Remove(exe)
+	if err := download(ctx, in.client, in.vcRedist, exe, "", func(done, total int64) {
+		in.detail(fmt.Sprintf("正在下载 Microsoft VC++ 运行库 %d/%d MB", done>>20, max(total, 0)>>20))
+	}); err != nil {
+		return err
+	}
+	in.detail("正在安装 Microsoft VC++ 运行库，请在弹出的窗口里允许…")
+	err := in.r.Run(ctx, in.env(), in.detail, exe, "/install", "/passive", "/norestart")
+	var ec interface{ ExitCode() int }
+	if err != nil && errors.As(err, &ec) {
+		switch ec.ExitCode() {
+		case 3010, 1638: // installed, reboot pending; a newer one is there
+			return nil
+		case 1602, 1223: // the user said no
+			return errors.New("没有安装 Microsoft VC++ 运行库（授权被取消）。PyTorch 需要它，请重试并允许")
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("安装 Microsoft VC++ 运行库失败：%w。也可以手动安装 %s 后重试", err, in.vcRedist)
+	}
+	return nil
 }
 
 // torchArgs installs the pinned PyTorch: the CPU build (or CUDA with GPU)
