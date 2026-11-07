@@ -95,6 +95,39 @@ func (k *Kokoro) Check() error {
 	return nil
 }
 
+// KokoroModelFiles are the files of the Kokoro-82M repository Repi uses,
+// relative to it: the config, the weights and one style file per voice.
+func KokoroModelFiles() []string {
+	files := []string{"config.json", "kokoro-v1_0.pth"}
+	for _, v := range KokoroVoices {
+		files = append(files, "voices/"+v.ID+".pt")
+	}
+	return files
+}
+
+// ModelDir is where the one-click setup puts the model files.
+func (k *Kokoro) ModelDir() string { return filepath.Join(k.Dir, "model") }
+
+// LocalModel reports whether every model file is in ModelDir.
+func (k *Kokoro) LocalModel() bool {
+	for _, f := range KokoroModelFiles() {
+		if _, err := os.Stat(filepath.Join(k.ModelDir(), filepath.FromSlash(f))); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// workerEnv is the environment of the worker: with a complete local model it
+// loads the files from there and never goes online.
+func (k *Kokoro) workerEnv() []string {
+	env := append(os.Environ(), "TOKENIZERS_PARALLELISM=false", "PYTHONWARNINGS=ignore")
+	if k.LocalModel() {
+		env = append(env, "REPI_KOKORO_MODEL="+k.ModelDir(), "HF_HUB_OFFLINE=1")
+	}
+	return env
+}
+
 // Status is a short description of what the worker is doing, for the UI.
 func (k *Kokoro) Status() string {
 	k.smu.Lock()
@@ -119,7 +152,7 @@ func (k *Kokoro) start() error {
 	}
 	cmd := exec.Command(k.Python(), "-u", script)
 	hideWindow(cmd)
-	cmd.Env = append(os.Environ(), "TOKENIZERS_PARALLELISM=false", "PYTHONWARNINGS=ignore")
+	cmd.Env = k.workerEnv()
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return err

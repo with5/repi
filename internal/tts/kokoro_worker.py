@@ -18,6 +18,15 @@ from kokoro import KModel, KPipeline
 REPO = os.environ.get("REPI_KOKORO_REPO", "hexgrad/Kokoro-82M")
 SAMPLE_RATE = 24000
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+MODEL_DIR = os.environ.get("REPI_KOKORO_MODEL", "")
+
+
+def local(name):
+    """Path of a model file in MODEL_DIR, or None."""
+    if not MODEL_DIR:
+        return None
+    p = os.path.join(MODEL_DIR, *name.split("/"))
+    return p if os.path.exists(p) else None
 
 
 def main():
@@ -26,7 +35,12 @@ def main():
     out = os.fdopen(os.dup(1), "w", buffering=1)
     os.dup2(2, 1)
     sys.stdout = sys.stderr
-    model = KModel(repo_id=REPO).to(DEVICE).eval()
+    cfg, pth = local("config.json"), local("kokoro-v1_0.pth")
+    if cfg and pth:
+        model = KModel(repo_id=REPO, config=cfg, model=pth)
+    else:
+        model = KModel(repo_id=REPO)
+    model = model.to(DEVICE).eval()
     pipelines = {}  # lang code ("a" American, "b" British) -> pipeline
 
     def pipeline(voice):
@@ -48,7 +62,8 @@ def main():
         try:
             chunks = []
             with torch.inference_mode():
-                for r in pipeline(req["voice"])(req["text"], voice=req["voice"], speed=req.get("speed") or 1.0):
+                voice = req["voice"]
+                for r in pipeline(voice)(req["text"], voice=local(f"voices/{voice}.pt") or voice, speed=req.get("speed") or 1.0):
                     if r.audio is not None:
                         chunks.append(r.audio.cpu().numpy())
             if not chunks:
