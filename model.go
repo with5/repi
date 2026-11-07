@@ -28,6 +28,9 @@ const (
 
 const defaultVoice = "kokoro:af_heart"
 
+// noTTSErr is the setup error when neither piper nor Kokoro is installed.
+const noTTSErr = "没有可用的 TTS：可以在下面一键安装 Kokoro"
+
 // model is the app's state. The fields under mu are also read by the
 // player and synthesis goroutines; the rest belongs to the UI thread.
 type model struct {
@@ -52,33 +55,34 @@ type model struct {
 	stopFetch context.CancelFunc
 
 	// UI-thread state.
-	setupErr   string
-	materials  []store.Material
-	cur        store.Material
-	open       bool // cur is a material
-	editing    bool
-	editID     int
-	draftTitle string
-	draftText  string
-	urlImp     urlImport
-	voiceSel   string
-	speedSel   string
-	hideText   bool
-	favorites  []string
-	bigScreen  bool
-	bigFont    int
-	showTrans  bool // the big screen shows the Chinese of the sentence
-	dic        dictState
-	tr         translator
-	tran       transState
-	lookup     lookupCard
-	ticking    atomic.Bool // a frame is scheduled while the big screen follows the sound
-	big        bigCache
-	showVoices bool         // the voice panel replaces the main area
-	showHelp   bool         // the shortcut overlay is open
-	listenID   atomic.Int64 // material whose sentences the player is playing
-	showStats  bool         // the statistics panel replaces the main area
-	dailyGoal  int          // minutes of listening aimed for each day; 0 means none
+	setupErr    string
+	materials   []store.Material
+	cur         store.Material
+	open        bool // cur is a material
+	editing     bool
+	editID      int
+	draftTitle  string
+	draftText   string
+	urlImp      urlImport
+	voiceSel    string
+	speedSel    string
+	hideText    bool
+	favorites   []string
+	bigScreen   bool
+	bigFont     int
+	showTrans   bool // the big screen shows the Chinese of the sentence
+	dic         dictState
+	kokoroSetup setupState
+	tr          translator
+	tran        transState
+	lookup      lookupCard
+	ticking     atomic.Bool // a frame is scheduled while the big screen follows the sound
+	big         bigCache
+	showVoices  bool         // the voice panel replaces the main area
+	showHelp    bool         // the shortcut overlay is open
+	listenID    atomic.Int64 // material whose sentences the player is playing
+	showStats   bool         // the statistics panel replaces the main area
+	dailyGoal   int          // minutes of listening aimed for each day; 0 means none
 
 	query       string // search box
 	tagFilter   string // tag chosen in the sidebar
@@ -107,13 +111,14 @@ func newModel(out player.Output) *model {
 	m.synth = &tts.Router{Piper: m.piper, Kokoro: m.kokoro}
 	m.pool = &tts.Pool{S: m.synth}
 	if m.piper.Check() != nil && m.kokoro.Check() != nil && m.setupErr == "" {
-		m.setupErr = "没有可用的 TTS：请安装 piper-tts 或 Kokoro 环境"
+		m.setupErr = noTTSErr
 	}
 
 	s := st.Settings()
 	m.voice, m.speed, m.hideText, m.favorites = s.Voice, s.Speed, s.HideText, s.Favorites
 	m.bigScreen, m.bigFont, m.showTrans = s.BigScreen, s.BigFont, s.Translate
 	m.dailyGoal = s.DailyGoal
+	m.initSetup(s.Mirror)
 	m.initDict(filepath.Dir(store.DefaultPath()), filepath.Join(store.CacheDir(), "translate"))
 	if m.bigFont < minBigFont || m.bigFont > maxBigFont {
 		m.bigFont = defaultBigFont
@@ -238,6 +243,7 @@ func (m *model) saveSettings() {
 	s.Voice, s.Speed, s.HideText, s.Favorites = m.voice, m.speed, m.hideText, m.favorites
 	s.BigScreen, s.BigFont, s.Translate = m.bigScreen, m.bigFont, m.showTrans
 	s.DailyGoal = m.dailyGoal
+	s.Mirror = m.kokoroSetup.mirror
 	if m.open {
 		s.LastOpened = m.cur.ID
 	}

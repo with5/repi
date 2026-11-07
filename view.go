@@ -49,6 +49,7 @@ func (m *model) view(c *ui.Context) {
 			m.setTranslate(!m.showTrans)
 		}
 	}
+	m.applySetup()
 	m.saveProgress(false)
 	m.helpOverlay(c)
 	m.lookupOverlay(c)
@@ -59,6 +60,9 @@ func (m *model) view(c *ui.Context) {
 		ui.Column(c).Grow(1).MinWidth(0).Padding(12, 20).Gap(10).Children(func() {
 			if m.setupErr != "" {
 				ui.Text(c, m.setupErr).TextColor(t.Danger)
+			}
+			if m.setupErr == noTTSErr && !m.showVoices {
+				m.kokoroSetupCard(c)
 			}
 			switch {
 			case m.showStats:
