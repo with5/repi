@@ -73,10 +73,10 @@ func HasNvidiaGPU() bool // exec.LookPath("nvidia-smi") 且运行成功
 ### 步骤
 
 1. **获取 uv**：请求 simple 索引页（官方 `https://pypi.org/simple/uv/`，镜像用清华），找到固定版本 `uvVersion` 中匹配当前平台标签的 wheel（见下表），下载后解出 `uv`/`uv.exe` 放到 `bin/`，Unix 上加可执行位。已存在且 `uv --version` 输出与 `uvVersion` 一致时跳过。
-2. **建 venv**：删除残留的 `venv.partial`，执行 `uv venv --relocatable --python 3.12 venv.partial`。
+2. **建 venv**：删除残留的 `venv.partial`，执行 `uv venv --relocatable --python 3.12 venv.partial`。镜像模式下设置 `UV_PYTHON_INSTALL_MIRROR=https://mirror.nju.edu.cn/github-release/astral-sh/python-build-standalone`（已确认 uv 0.13.7 所需的 20261026 发布在南大镜像上）。
 3. **装 PyTorch**：
    - Linux、Windows CPU：官方 `--index-url https://download.pytorch.org/whl/cpu`；镜像 `--find-links https://mirrors.aliyun.com/pytorch-wheels/cpu/`，加上 PyPI 镜像作为其它包的索引。
-   - GPU（只在 Linux、Windows 上提供）：官方 CUDA 索引 `download.pytorch.org/whl/cu128`；镜像用阿里云对应的 `cu128` 目录。
+   - GPU（只在 Linux、Windows 上提供）：官方 CUDA 索引 `download.pytorch.org/whl/cu132`；镜像用阿里云 `pytorch-wheels/cu132/`。只在 linux/amd64、linux/arm64、windows/amd64 上提供。
    - macOS：直接从 PyPI 装（PyPI 的 macOS torch 就是 CPU/MPS 版）。
    - torch 版本固定为 `torchVersion`。
 4. **装 kokoro**：`uv pip install kokoro==<kokoroVersion> soundfile`，再装 spaCy 模型的 wheel（GitHub Releases 上固定版本的 URL）。镜像模式下 `UV_INDEX_URL` 指向清华 PyPI。
@@ -91,12 +91,11 @@ func HasNvidiaGPU() bool // exec.LookPath("nvidia-smi") 且运行成功
 | --- | --- |
 | linux/amd64 | `manylinux_2_17_x86_64` |
 | linux/arm64 | `manylinux_2_17_aarch64` |
-| darwin/amd64 | `macosx_10_12_x86_64` |
 | darwin/arm64 | `macosx_11_0_arm64` |
 | windows/amd64 | `win_amd64` |
 | windows/arm64 | `win_arm64` |
 
-其它平台直接报“不支持一键安装，请参照 README 手动安装”。
+其它平台直接报“不支持一键安装，请参照 README 手动安装”。Intel Mac（darwin/amd64）也不支持：PyTorch 2.3 起不再发布 macOS x86_64 的 wheel。
 
 ### 执行命令
 
@@ -112,7 +111,7 @@ type runner interface {
 
 ### 版本固定
 
-`uvVersion`、`torchVersion`、`kokoroVersion` 和 spaCy 模型版本都是 `setup` 包里的常量。实现时选择当时能在官方源和上表镜像中同时找到的版本，并确认南大镜像里有该 uv 版本所需的 python-build-standalone 发布。
+都是 `setup` 包里的常量（2026-11-08 确认官方源和镜像都有）：uv 0.13.7、Python 3.12、torch 2.15.0（`+cpu` / `+cu132`）、kokoro 0.9.4、`en_core_web_sm` 3.8.0。
 
 ## worker 改动
 
@@ -121,11 +120,11 @@ type runner interface {
 - 目录里有 `config.json` 和 `kokoro-v1_0.pth` 时，用 `KModel(repo_id=REPO, config=..., model=...)` 加载本地文件；合成时把音色参数换成 `model/voices/<voice>.pt` 的路径（`KPipeline` 对以 `.pt` 结尾的音色直接读文件）。
 - 否则保持现有行为，从 HuggingFace 下载。手动安装的老用户不受影响。
 
-`tts.Kokoro.start` 总是设置 `REPI_KOKORO_MODEL=<Dir>/model`。设置 `HF_HUB_OFFLINE=1` 的条件是本地模型完整，防止 kokoro 在后台联网。
+本地模型完整时（`tts.KokoroModelFiles()` 列出的文件都在 `<Dir>/model`），`tts.Kokoro.start` 设置 `REPI_KOKORO_MODEL=<Dir>/model` 和 `HF_HUB_OFFLINE=1`，防止 kokoro 在后台联网；否则两者都不设。
 
 ## 设置
 
-`store.Settings` 新增 `Mirror bool`（`json:"mirror,omitempty"`），记住用户上次的镜像选择，作为安装卡片里复选框的初始值。默认 `false`。
+`store.Settings` 新增 `Mirror bool`（`json:"mirror,omitempty"`），点“一键安装”时保存，作为下次安装卡片里复选框的初始值。默认 `false`。
 
 ## UI
 
@@ -135,7 +134,7 @@ type runner interface {
 
 - 说明：“Kokoro 是 Repi 默认的神经网络语音引擎。一键安装会下载约 X MB（Python、PyTorch 和模型），装在 `<Dir>`，不影响系统环境。”（X 按是否 GPU 估算显示）
 - 复选框“使用国内镜像”。
-- 复选框“GPU 加速（NVIDIA，下载约 2.5GB）”，只在 `HasNvidiaGPU()` 为真时显示。
+- 复选框“GPU 加速（NVIDIA，下载约 3.5GB）”，只在 `HasNvidiaGPU()` 为真时显示。
 - 主按钮“一键安装”。
 - 运行中：“第 3/6 步：安装 PyTorch”，下面是 `Detail`，按钮变成“取消”。
 - 失败：红字错误 + “重试”按钮；错误信息里提示可以试试切换镜像。
@@ -149,7 +148,6 @@ type runner interface {
 
 - 清空 `setupErr`（如果它是“没有可用的 TTS”那条）。
 - 如果当前音色不可用，切到 `defaultVoice`（`kokoro:af_heart`），并刷新 `voiceSel`。
-- 保存 `Settings.Mirror`。
 - 触发重绘；之后的朗读会正常启动 worker。
 
 ## 错误处理
