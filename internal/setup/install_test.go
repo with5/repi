@@ -307,3 +307,76 @@ func TestInstallVCRuntime(t *testing.T) {
 		t.Fatalf("err %v, vc_redist ran %v", err, r.vcRan)
 	}
 }
+
+// The voice-cloning engine goes in its own directory but uses Kokoro's uv,
+// Python, uv cache and PyTorch build; Chatterbox's own pins are skipped.
+func TestInstallClone(t *testing.T) {
+	dir := t.TempDir()
+	kokoro, clone := filepath.Join(dir, "kokoro"), filepath.Join(dir, "clone")
+	os.MkdirAll(filepath.Join(kokoro, "venv", "lib", "python3.12", "site-packages", "torch-2.15.0+cu132.dist-info"), 0o755)
+	r := &fakeRunner{}
+	var seen []Progress
+	in := testInstaller(t, Options{Dir: kokoro, Clone: clone}, r)
+	in.files = []string{"t3_cfg.safetensors", "conds.pt"}
+	if err := in.run(context.Background(), func(p Progress) { seen = append(seen, p) }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(venvPython(filepath.Join(clone, "venv"), "linux")); err != nil {
+		t.Fatal("clone venv not promoted")
+	}
+	if _, err := os.Stat(filepath.Join(kokoro, "venv.partial")); !os.IsNotExist(err) {
+		t.Fatal("touched Kokoro's directory")
+	}
+	if b, _ := os.ReadFile(filepath.Join(clone, "model", "conds.pt")); string(b) != "weights" {
+		t.Fatal("model not downloaded")
+	}
+	if _, err := os.Stat(filepath.Join(kokoro, "bin", "uv")); err != nil {
+		t.Fatal("uv not in Kokoro's bin")
+	}
+	for _, c := range r.calls {
+		if !slices.Contains(c.env, "UV_CACHE_DIR="+filepath.Join(kokoro, "uv-cache")) {
+			t.Errorf("%v does not use Kokoro's uv cache", c.args)
+		}
+	}
+	if slices.ContainsFunc(seen, func(p Progress) bool { return p.Title == "安装 Kokoro" }) {
+		t.Error("shows Kokoro's steps")
+	}
+	// [0] venv, [1] torch, [2] chatterbox --no-deps, [3] deps with torch, [4] self-check
+	if torch := r.calls[1].args; !slices.Contains(torch, "torch==2.15.0+cu132") {
+		t.Errorf("torch does not match Kokoro's: %v", torch)
+	}
+	if nd := r.calls[2].args; !slices.Contains(nd, "--no-deps") || !slices.Contains(nd, "chatterbox-tts=="+chatterboxVersion) {
+		t.Errorf("chatterbox args %v", nd)
+	}
+	deps := r.calls[3].args
+	for _, w := range []string{"torch==2.15.0+cu132", "torchaudio==" + torchaudioVersion, "transformers==5.2.0", "sounddevice"} {
+		if !slices.Contains(deps, w) {
+			t.Errorf("deps %v lack %s", deps, w)
+		}
+	}
+	if slices.Contains(deps, "--no-deps") {
+		t.Error("deps installed without their own dependencies")
+	}
+	if check := r.calls[4].args; !strings.Contains(check[1], "chatterbox") {
+		t.Errorf("self-check %v", check)
+	}
+}
+
+func TestCloneSources(t *testing.T) {
+	in := newInstaller(Options{Dir: "/k", Clone: "/c", Mirror: true}, nil)
+	if in.modelBase != mirrorClone || in.target != "/c" || in.torch != "" {
+		t.Fatalf("mirror %q target %q torch %q", in.modelBase, in.target, in.torch)
+	}
+	if in = newInstaller(Options{Dir: "/k", Clone: "/c"}, nil); in.modelBase != officialClone {
+		t.Fatalf("model %q", in.modelBase)
+	}
+	if !strings.Contains(officialClone, cloneModelRev) {
+		t.Fatal("model revision not pinned")
+	}
+	// no Kokoro venv found: fall back to the GPU choice
+	in = newInstaller(Options{Dir: "/k", Clone: "/c", GPU: true}, nil)
+	in.goos = "linux"
+	if got := in.torchArgs("/p"); !slices.Contains(got, "torch==2.15.0+cu132") {
+		t.Fatalf("torch args %v", got)
+	}
+}

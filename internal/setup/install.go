@@ -17,9 +17,14 @@ import (
 
 // Options say where and how to install.
 type Options struct {
-	Dir    string // the Kokoro directory, tts.Kokoro.Dir
+	Dir    string // the Kokoro directory, tts.Kokoro.Dir; also holds uv, Python and the uv cache
 	Mirror bool   // use mirrors in China
 	GPU    bool   // install the CUDA build of PyTorch
+	// Clone, when set, installs the Chatterbox voice-cloning engine in this
+	// directory (tts.Clone.Dir) instead of Kokoro. It uses Dir's uv, Python
+	// and uv cache, and the PyTorch build Kokoro has, so PyTorch comes from
+	// the cache.
+	Clone string
 }
 
 // Progress is what the installer is doing, for the UI.
@@ -53,6 +58,10 @@ func GPUAvailable() bool {
 	return err == nil && strings.Contains(string(out), "GPU")
 }
 
+// EstimateCloneSize is the rough download size of the voice-cloning engine
+// once Kokoro is installed, for the UI.
+func EstimateCloneSize() string { return "约 3.5GB" }
+
 // EstimateSize is the rough download size, for the UI.
 func EstimateSize(gpu bool) string {
 	if gpu {
@@ -69,6 +78,9 @@ type installer struct {
 	pypi         string   // simple index, with a trailing slash
 	modelBase    string   // model repository, with a trailing slash
 	files        []string // model files, tts.KokoroModelFiles
+	titles       []string // of the steps
+	target       string   // where venv/ and model/ go: o.Dir, or o.Clone
+	torch        string   // a PyTorch version to match, "2.15.0+cu132"; "" for torchVersion
 	vcRedist     string   // Microsoft VC++ redistributable, for Windows
 	progress     func(Progress)
 	cur          Progress
@@ -76,9 +88,16 @@ type installer struct {
 
 func newInstaller(o Options, r runner) *installer {
 	in := &installer{o: o, r: r, client: &http.Client{}, goos: runtime.GOOS, goarch: runtime.GOARCH,
-		pypi: officialPyPI, modelBase: officialModel, files: tts.KokoroModelFiles()}
+		pypi: officialPyPI, modelBase: officialModel, files: tts.KokoroModelFiles(), titles: stepTitles, target: o.Dir}
 	if o.Mirror {
 		in.pypi, in.modelBase = mirrorPyPI, mirrorModel
+	}
+	if o.Clone != "" {
+		in.modelBase, in.files, in.titles, in.target = officialClone, tts.CloneModelFiles, cloneStepTitles, o.Clone
+		if o.Mirror {
+			in.modelBase = mirrorClone
+		}
+		in.torch = installedTorch(filepath.Join(o.Dir, "venv"), in.goos)
 	}
 	in.vcRedist = vcRedistURL + "x64.exe"
 	if in.goarch == "arm64" {
@@ -95,6 +114,20 @@ func (in *installer) exe(name string) string {
 }
 
 func (in *installer) uvPath() string { return filepath.Join(in.o.Dir, "bin", in.exe("uv")) }
+
+// installedTorch is the PyTorch version in the virtual environment at venv,
+// "2.15.0+cu132", or "" when there is none.
+func installedTorch(venv, goos string) string {
+	pattern := filepath.Join(venv, "lib", "python*", "site-packages", "torch-*.dist-info")
+	if goos == "windows" {
+		pattern = filepath.Join(venv, "Lib", "site-packages", "torch-*.dist-info")
+	}
+	m, _ := filepath.Glob(pattern)
+	if len(m) != 1 {
+		return ""
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(filepath.Base(m[0]), "torch-"), ".dist-info")
+}
 
 // venvPython is the interpreter of the virtual environment at dir.
 func venvPython(dir, goos string) string {
@@ -120,7 +153,7 @@ func (in *installer) env() []string {
 }
 
 func (in *installer) begin(step int) {
-	in.cur = Progress{Step: step, Steps: len(stepTitles), Title: stepTitles[step-1]}
+	in.cur = Progress{Step: step, Steps: len(in.titles), Title: in.titles[step-1]}
 	in.progress(in.cur)
 }
 
@@ -142,13 +175,16 @@ func (in *installer) run(ctx context.Context, progress func(Progress)) error {
 	if !ok {
 		return errUnsupported
 	}
-	partial := filepath.Join(in.o.Dir, "venv.partial")
+	if err := os.MkdirAll(in.target, 0o755); err != nil {
+		return err
+	}
+	partial := filepath.Join(in.target, "venv.partial")
 	err := in.steps(ctx, tag, partial)
 	if err == nil {
 		return nil
 	}
 	os.RemoveAll(partial)
-	removeParts(filepath.Join(in.o.Dir, "model"))
+	removeParts(filepath.Join(in.target, "model"))
 	if ctx.Err() != nil {
 		return context.Canceled
 	}
@@ -182,11 +218,11 @@ func (in *installer) steps(ctx context.Context, tag, partial string) error {
 		return err
 	}
 	in.begin(4)
-	if err := in.uv(ctx, "pip", "install", "--python", py, "--index-url", in.pypi, "kokoro=="+kokoroVersion, "soundfile", spacyModelURL); err != nil {
+	if err := in.installEngine(ctx, py); err != nil {
 		return err
 	}
 	in.begin(5)
-	err := downloadModel(ctx, in.client, in.modelBase, filepath.Join(in.o.Dir, "model"), in.files, func(i, n int, name string, done, total int64) {
+	err := downloadModel(ctx, in.client, in.modelBase, filepath.Join(in.target, "model"), in.files, func(i, n int, name string, done, total int64) {
 		d := fmt.Sprintf("%d/%d %s %d MB", i, n, filepath.Base(name), done>>20)
 		if total > 0 {
 			d = fmt.Sprintf("%d/%d %s %d/%d MB", i, n, filepath.Base(name), done>>20, total>>20)
@@ -198,6 +234,9 @@ func (in *installer) steps(ctx context.Context, tag, partial string) error {
 	}
 	in.begin(6)
 	check := "import kokoro, soundfile, torch, spacy; spacy.load('en_core_web_sm')"
+	if in.o.Clone != "" {
+		check = "import torch, torchaudio, librosa, soundfile, pyloudnorm; from chatterbox.tts import ChatterboxTTS"
+	}
 	err = in.r.Run(ctx, in.env(), in.detail, py, "-c", check)
 	if err != nil && needsVCRuntime(in.goos, err) {
 		if err := in.installVCRuntime(ctx); err != nil {
@@ -208,7 +247,22 @@ func (in *installer) steps(ctx context.Context, tag, partial string) error {
 	if err != nil {
 		return err
 	}
-	return promote(in.o.Dir, partial)
+	return promote(in.target, partial)
+}
+
+// installEngine installs kokoro, or Chatterbox: first the packages whose
+// pins are ignored, then their dependencies together with the PyTorch
+// already installed, so that the resolver keeps it.
+func (in *installer) installEngine(ctx context.Context, py string) error {
+	if in.o.Clone == "" {
+		return in.uv(ctx, "pip", "install", "--python", py, "--index-url", in.pypi, "kokoro=="+kokoroVersion, "soundfile", spacyModelURL)
+	}
+	if err := in.uv(ctx, append([]string{"pip", "install", "--python", py, "--index-url", in.pypi, "--no-deps"}, cloneNoDeps...)...); err != nil {
+		return err
+	}
+	args := in.torchArgs(py)
+	args = append(args, "torchaudio=="+torchaudioVersion)
+	return in.uv(ctx, append(args, cloneDeps...)...)
 }
 
 // needsVCRuntime reports whether the self-check failed because the Microsoft
@@ -254,19 +308,26 @@ func (in *installer) installVCRuntime(ctx context.Context) error {
 // from PyTorch's index or the Aliyun mirror, the plain PyPI build on macOS.
 func (in *installer) torchArgs(py string) []string {
 	args := []string{"pip", "install", "--python", py, "--index-url", in.pypi}
-	if in.goos == "darwin" {
-		return append(args, "torch=="+torchVersion)
-	}
-	flavor := "cpu"
+	version, flavor := torchVersion, "cpu"
 	if in.o.GPU {
 		flavor = cudaFlavor
+	}
+	if in.torch != "" { // the build Kokoro has, which is in the uv cache
+		v, f, ok := strings.Cut(in.torch, "+")
+		version = v
+		if ok {
+			flavor = f
+		}
+	}
+	if in.goos == "darwin" {
+		return append(args, "torch=="+version)
 	}
 	if in.o.Mirror {
 		args = append(args, "--find-links", mirrorTorch+flavor+"/")
 	} else {
 		args = append(args, "--extra-index-url", officialTorch+flavor)
 	}
-	return append(args, "torch=="+torchVersion+"+"+flavor)
+	return append(args, "torch=="+version+"+"+flavor)
 }
 
 // ensureUV puts the pinned uv in bin/, unless it is already there.
