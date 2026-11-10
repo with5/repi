@@ -15,7 +15,7 @@ import (
 )
 
 // version is this release; the git tag of a release is "v" + version.
-const version = "0.3.1"
+const version = "0.4.0"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
