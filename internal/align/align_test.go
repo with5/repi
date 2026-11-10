@@ -128,3 +128,35 @@ func TestAlignAnchorsToSilence(t *testing.T) {
 		}
 	}
 }
+
+func TestTokensChinese(t *testing.T) {
+	type tk struct {
+		text  string
+		space bool
+		pause float64
+	}
+	got := Tokens("他说：“我用 iPhone，拍了 3.14 张。”好")
+	want := []tk{
+		{"他", false, 0}, {"说：", false, commaPause}, {"“我", false, 0}, {"用", false, 0},
+		{"iPhone，", true, commaPause}, {"拍", false, 0}, {"了", false, 0},
+		{"3.14", true, 0}, {"张。”", true, stopPause}, {"好", false, 0},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d tokens %+v", len(got), got)
+	}
+	for i, w := range want {
+		if got[i].Text != w.text || got[i].Space != w.space || got[i].Pause != w.pause {
+			t.Errorf("token %d = %+v, want %+v", i, got[i], w)
+		}
+	}
+	if got[0].Weight != 1 || got[4].Weight != 2 {
+		t.Errorf("weights %v %v, want 1 and 2", got[0].Weight, got[4].Weight)
+	}
+}
+
+func TestTokensEnglishSpace(t *testing.T) {
+	got := Tokens("Hello there, world.")
+	if len(got) != 3 || got[0].Space || !got[1].Space || !got[2].Space {
+		t.Errorf("got %+v", got)
+	}
+}

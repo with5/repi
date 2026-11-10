@@ -1,9 +1,16 @@
-// Package text splits English study material into sentences.
+// Package text splits study material, English or Chinese, into sentences.
 package text
 
 import (
 	"strings"
 	"unicode"
+)
+
+const (
+	cjkStops = "。！？"
+	stops    = ".?!…" + cjkStops
+	// closers stay with the sentence they close.
+	closers = `"'”’)]」』）》】`
 )
 
 // abbreviations whose trailing period does not end a sentence.
@@ -14,9 +21,10 @@ var abbreviations = map[string]bool{
 }
 
 // Split cuts s into sentences: at . ? ! (and their runs, closing quotes and
-// brackets) followed by space, and at line breaks. Abbreviations such as
-// "Mr." and decimals such as "3.14" do not end a sentence. Empty results
-// are dropped and whitespace is collapsed.
+// brackets) followed by space, at Chinese 。！？ wherever they are, and at
+// line breaks. ? and ! end a sentence before a Chinese character too.
+// Abbreviations such as "Mr." and decimals such as "3.14" do not end a
+// sentence. Empty results are dropped and whitespace is collapsed.
 func Split(s string) []string {
 	var out []string
 	for _, line := range strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n") {
@@ -37,17 +45,18 @@ func splitLine(line string) []string {
 	}
 	for i := 0; i < len(rs); i++ {
 		r := rs[i]
-		if r != '.' && r != '?' && r != '!' && r != '…' {
+		if !strings.ContainsRune(stops, r) {
 			continue
 		}
 		j := i + 1
-		for j < len(rs) && (rs[j] == '.' || rs[j] == '?' || rs[j] == '!' || rs[j] == '…') {
+		for j < len(rs) && strings.ContainsRune(stops, rs[j]) {
 			j++
 		}
-		for j < len(rs) && strings.ContainsRune(`"'”’)]`, rs[j]) {
+		cjk := strings.ContainsAny(string(rs[i:j]), cjkStops)
+		for j < len(rs) && strings.ContainsRune(closers, rs[j]) {
 			j++
 		}
-		if j < len(rs) && !unicode.IsSpace(rs[j]) {
+		if !cjk && j < len(rs) && !unicode.IsSpace(rs[j]) && !(r != '.' && r != '…' && IsHan(rs[j])) {
 			i = j - 1 // "3.14", "e.g.x": not a boundary
 			continue
 		}
@@ -73,6 +82,29 @@ func isAbbreviation(rs []rune, dot int) bool {
 		return true
 	}
 	return len([]rune(w)) == 1 && unicode.IsUpper(rs[k])
+}
+
+// IsHan reports whether r is a Chinese character.
+func IsHan(r rune) bool { return unicode.Is(unicode.Han, r) }
+
+// IsChinese reports whether s is Chinese material: it has Chinese
+// characters, at least as many as English words (a character says about as
+// much as a word), so English words inside Chinese keep it Chinese and a
+// Chinese gloss in English text does not.
+func IsChinese(s string) bool {
+	han, words := 0, 0
+	inWord := false
+	for _, r := range s {
+		latin := r < 0x250 && unicode.IsLetter(r)
+		if latin && !inWord {
+			words++
+		}
+		inWord = latin
+		if IsHan(r) {
+			han++
+		}
+	}
+	return han > 0 && han >= words
 }
 
 func hasLetterOrDigit(s string) bool {
