@@ -25,6 +25,10 @@ type Options struct {
 	// and uv cache, and the PyTorch build Kokoro has, so PyTorch comes from
 	// the cache.
 	Clone string
+	// Zh, when set, adds Chinese support to the Kokoro environment in Dir,
+	// which was installed without it: misaki's Chinese G2P and the Mandarin
+	// voices. New installs have it already.
+	Zh bool
 }
 
 // Progress is what the installer is doing, for the UI.
@@ -62,6 +66,9 @@ func GPUAvailable() bool {
 // once Kokoro is installed, for the UI.
 func EstimateCloneSize() string { return "约 3.5GB" }
 
+// EstimateZhSize is the rough download size of Chinese support, for the UI.
+func EstimateZhSize() string { return "约 30MB" }
+
 // EstimateSize is the rough download size, for the UI.
 func EstimateSize(gpu bool) string {
 	if gpu {
@@ -88,9 +95,13 @@ type installer struct {
 
 func newInstaller(o Options, r runner) *installer {
 	in := &installer{o: o, r: r, client: &http.Client{}, goos: runtime.GOOS, goarch: runtime.GOARCH,
-		pypi: officialPyPI, modelBase: officialModel, files: tts.KokoroModelFiles(), titles: stepTitles, target: o.Dir}
+		pypi: officialPyPI, modelBase: officialModel, titles: stepTitles, target: o.Dir,
+		files: append(tts.KokoroModelFiles(), tts.KokoroZhFiles()...)}
 	if o.Mirror {
 		in.pypi, in.modelBase = mirrorPyPI, mirrorModel
+	}
+	if o.Zh {
+		in.files, in.titles = tts.KokoroZhFiles(), zhStepTitles
 	}
 	if o.Clone != "" {
 		in.modelBase, in.files, in.titles, in.target = officialClone, tts.CloneModelFiles, cloneStepTitles, o.Clone
@@ -179,11 +190,18 @@ func (in *installer) run(ctx context.Context, progress func(Progress)) error {
 		return err
 	}
 	partial := filepath.Join(in.target, "venv.partial")
-	err := in.steps(ctx, tag, partial)
+	var err error
+	if in.o.Zh {
+		err = in.zhSteps(ctx, tag)
+	} else {
+		err = in.steps(ctx, tag, partial)
+	}
 	if err == nil {
 		return nil
 	}
-	os.RemoveAll(partial)
+	if !in.o.Zh {
+		os.RemoveAll(partial)
+	}
 	removeParts(filepath.Join(in.target, "model"))
 	if ctx.Err() != nil {
 		return context.Canceled
@@ -222,22 +240,15 @@ func (in *installer) steps(ctx context.Context, tag, partial string) error {
 		return err
 	}
 	in.begin(5)
-	err := downloadModel(ctx, in.client, in.modelBase, filepath.Join(in.target, "model"), in.files, func(i, n int, name string, done, total int64) {
-		d := fmt.Sprintf("%d/%d %s %d MB", i, n, filepath.Base(name), done>>20)
-		if total > 0 {
-			d = fmt.Sprintf("%d/%d %s %d/%d MB", i, n, filepath.Base(name), done>>20, total>>20)
-		}
-		in.detail(d)
-	})
-	if err != nil {
+	if err := in.download(ctx); err != nil {
 		return err
 	}
 	in.begin(6)
-	check := "import kokoro, soundfile, torch, spacy; spacy.load('en_core_web_sm')"
+	check := "import kokoro, soundfile, torch, spacy; spacy.load('en_core_web_sm'); " + zhCheck
 	if in.o.Clone != "" {
 		check = "import torch, torchaudio, librosa, soundfile, pyloudnorm; from chatterbox.tts import ChatterboxTTS"
 	}
-	err = in.r.Run(ctx, in.env(), in.detail, py, "-c", check)
+	err := in.r.Run(ctx, in.env(), in.detail, py, "-c", check)
 	if err != nil && needsVCRuntime(in.goos, err) {
 		if err := in.installVCRuntime(ctx); err != nil {
 			return err
@@ -250,12 +261,49 @@ func (in *installer) steps(ctx context.Context, tag, partial string) error {
 	return promote(in.target, partial)
 }
 
+// zhCheck imports what Kokoro needs to read Chinese.
+const zhCheck = "import jieba, pypinyin, cn2an; from misaki import zh"
+
+// download fetches the model files into target/model.
+func (in *installer) download(ctx context.Context) error {
+	return downloadModel(ctx, in.client, in.modelBase, filepath.Join(in.target, "model"), in.files, func(i, n int, name string, done, total int64) {
+		d := fmt.Sprintf("%d/%d %s %d MB", i, n, filepath.Base(name), done>>20)
+		if total > 0 {
+			d = fmt.Sprintf("%d/%d %s %d/%d MB", i, n, filepath.Base(name), done>>20, total>>20)
+		}
+		in.detail(d)
+	})
+}
+
+// zhSteps add Chinese support to the installed Kokoro environment, in place:
+// what they add is new, so a failure leaves English as it was.
+func (in *installer) zhSteps(ctx context.Context, tag string) error {
+	py := venvPython(filepath.Join(in.o.Dir, "venv"), in.goos)
+	if _, err := os.Stat(py); err != nil {
+		return errors.New("还没有安装 Kokoro")
+	}
+	in.begin(1)
+	if err := in.ensureUV(ctx, tag); err != nil {
+		return err
+	}
+	in.begin(2)
+	if err := in.uv(ctx, "pip", "install", "--python", py, "--index-url", in.pypi, "misaki[zh]=="+misakiVersion); err != nil {
+		return err
+	}
+	in.begin(3)
+	if err := in.download(ctx); err != nil {
+		return err
+	}
+	in.begin(4)
+	return in.r.Run(ctx, in.env(), in.detail, py, "-c", zhCheck)
+}
+
 // installEngine installs kokoro, or Chatterbox: first the packages whose
 // pins are ignored, then their dependencies together with the PyTorch
 // already installed, so that the resolver keeps it.
 func (in *installer) installEngine(ctx context.Context, py string) error {
 	if in.o.Clone == "" {
-		return in.uv(ctx, "pip", "install", "--python", py, "--index-url", in.pypi, "kokoro=="+kokoroVersion, "soundfile", spacyModelURL)
+		return in.uv(ctx, "pip", "install", "--python", py, "--index-url", in.pypi, "kokoro=="+kokoroVersion, "misaki[en,zh]=="+misakiVersion, "soundfile", spacyModelURL)
 	}
 	if err := in.uv(ctx, append([]string{"pip", "install", "--python", py, "--index-url", in.pypi, "--no-deps"}, cloneNoDeps...)...); err != nil {
 		return err

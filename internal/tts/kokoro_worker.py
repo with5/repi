@@ -8,6 +8,7 @@ Everything else (progress, warnings) goes to stderr.
 """
 import json
 import os
+import re
 import sys
 
 import numpy as np
@@ -29,6 +30,30 @@ def local(name):
     return p if os.path.exists(p) else None
 
 
+# A run of English words inside Chinese text.
+LATIN = re.compile(r"[A-Za-z][A-Za-z'’-]*(?:\s+[A-Za-z][A-Za-z'’-]*)*")
+
+
+def mixed_g2p(zh, en):
+    """Wraps Kokoro's Chinese G2P, which (with the v1.0 model) passes English
+    words through as letters: English runs get English phonemes instead.
+    en returns the English G2P, made the first time it is needed."""
+
+    def g2p(text):
+        out, pos = [], 0
+        for m in LATIN.finditer(text):
+            if m.start() > pos:
+                out.append(zh(text[pos:m.start()])[0])
+            out.append(" " + en()(m.group())[0] + " ")
+            pos = m.end()
+        if pos < len(text):
+            out.append(zh(text[pos:])[0])
+        ps = re.sub(r" +([,.!?;:])", r"\1", re.sub(r" +", " ", "".join(out)))
+        return ps.strip(), None
+
+    return g2p
+
+
 def main():
     # Keep the protocol channel clean: libraries print banners to fd 1, so
     # move the real stdout aside and point fd 1 (and sys.stdout) at stderr.
@@ -41,12 +66,15 @@ def main():
     else:
         model = KModel(repo_id=REPO)
     model = model.to(DEVICE).eval()
-    pipelines = {}  # lang code ("a" American, "b" British) -> pipeline
+    pipelines = {}  # lang code ("a" American, "b" British, "z" Chinese) -> pipeline
 
     def pipeline(voice):
         lang = voice[0]
         if lang not in pipelines:
-            pipelines[lang] = KPipeline(lang_code=lang, repo_id=REPO, model=model)
+            p = KPipeline(lang_code=lang, repo_id=REPO, model=model)
+            if lang == "z":
+                p.g2p = mixed_g2p(p.g2p, lambda: pipeline("a").g2p)
+            pipelines[lang] = p
         return pipelines[lang]
 
     def reply(obj):

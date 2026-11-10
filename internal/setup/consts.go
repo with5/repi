@@ -1,6 +1,7 @@
 // Package setup installs the Kokoro environment: uv, a Python virtual
-// environment with PyTorch and kokoro, and the model files; and, next to it,
-// the Chatterbox voice-cloning engine.
+// environment with PyTorch and kokoro, and the model files; Chinese support
+// for an environment installed without it; and, next to it, the Chatterbox
+// voice-cloning engine.
 package setup
 
 import "errors"
@@ -13,6 +14,8 @@ const (
 	torchVersion  = "2.15.0"
 	cudaFlavor    = "cu132"
 	kokoroVersion = "0.9.4"
+	// misaki is Kokoro's G2P; its zh extra (jieba, pypinyin, cn2an) reads Chinese.
+	misakiVersion = "0.9.4"
 	spacyModelURL = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
 
 	officialPyPI  = "https://pypi.org/simple/"
@@ -61,6 +64,8 @@ var uvTags = map[string]string{
 var cudaPlatforms = map[string]bool{"linux/amd64": true, "linux/arm64": true, "windows/amd64": true}
 
 var stepTitles = []string{"获取 uv", "准备 Python", "安装 PyTorch", "安装 Kokoro", "下载模型", "检查安装"}
+
+var zhStepTitles = []string{"获取 uv", "安装中文分词", "下载中文音色", "检查安装"}
 
 var cloneStepTitles = []string{"获取 uv", "准备 Python", "安装 PyTorch", "安装 Chatterbox", "下载模型", "检查安装"}
 

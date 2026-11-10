@@ -145,7 +145,7 @@ func TestInstall(t *testing.T) {
 		t.Errorf("torch args %v", torch)
 	}
 	kokoro := r.calls[2].args
-	if !slices.Contains(kokoro, "kokoro==0.9.4") || !slices.Contains(kokoro, spacyModelURL) {
+	if !slices.Contains(kokoro, "kokoro==0.9.4") || !slices.Contains(kokoro, spacyModelURL) || !slices.Contains(kokoro, "misaki[en,zh]=="+misakiVersion) {
 		t.Errorf("kokoro args %v", kokoro)
 	}
 
@@ -378,5 +378,47 @@ func TestCloneSources(t *testing.T) {
 	in.goos = "linux"
 	if got := in.torchArgs("/p"); !slices.Contains(got, "torch==2.15.0+cu132") {
 		t.Fatalf("torch args %v", got)
+	}
+}
+
+func TestInstallZh(t *testing.T) {
+	dir := t.TempDir()
+	py := venvPython(filepath.Join(dir, "venv"), "linux")
+	os.MkdirAll(filepath.Dir(py), 0o755)
+	os.WriteFile(py, nil, 0o755)
+	r := &fakeRunner{}
+	var seen []Progress
+	in := testInstaller(t, Options{Dir: dir, Zh: true}, r)
+	in.files = []string{"voices/zf_xiaoxiao.pt"}
+	if err := in.run(context.Background(), func(p Progress) { seen = append(seen, p) }); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "model", "voices", "zf_xiaoxiao.pt")); string(b) != "weights" {
+		t.Fatal("voice not downloaded")
+	}
+	if argsOf(r.calls, "venv") != nil {
+		t.Error("made a new environment")
+	}
+	pip := argsOf(r.calls, "pip")
+	if !slices.Contains(pip, "misaki[zh]=="+misakiVersion) || !slices.Contains(pip, py) || slices.ContainsFunc(pip, func(a string) bool { return strings.HasPrefix(a, "torch") }) {
+		t.Errorf("pip args %v", pip)
+	}
+	if check := argsOf(r.calls, "-c"); !strings.Contains(check[1], "from misaki import zh") {
+		t.Errorf("self-check %v", check)
+	}
+	if last := seen[len(seen)-1]; last.Steps != 4 || last.Title != "检查安装" {
+		t.Errorf("last progress %+v", last)
+	}
+
+	// Without Kokoro there is nothing to add to.
+	if err := testInstaller(t, Options{Dir: t.TempDir(), Zh: true}, &fakeRunner{}).run(context.Background(), func(Progress) {}); err == nil {
+		t.Error("installed Chinese without Kokoro")
+	}
+}
+
+func TestNewInstallHasZh(t *testing.T) {
+	in := newInstaller(Options{Dir: "/d"}, nil)
+	if !slices.Contains(in.files, "voices/zm_yunxi.pt") || !slices.Contains(in.files, "voices/af_heart.pt") {
+		t.Errorf("files %v", in.files)
 	}
 }

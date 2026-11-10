@@ -55,6 +55,28 @@ var KokoroVoices = []KokoroVoiceInfo{
 	{"bm_daniel", "Daniel", "英音 · 男声"},
 }
 
+// KokoroZhVoices are the Mandarin voices of Kokoro-82M (z for Chinese, then
+// the gender). They need misaki's Chinese support, see Kokoro.ZhReady.
+var KokoroZhVoices = []KokoroVoiceInfo{
+	{"zf_xiaoxiao", "Xiaoxiao", "普通话 · 女声"},
+	{"zf_xiaobei", "Xiaobei", "普通话 · 女声"},
+	{"zf_xiaoni", "Xiaoni", "普通话 · 女声"},
+	{"zf_xiaoyi", "Xiaoyi", "普通话 · 女声"},
+	{"zm_yunxi", "Yunxi", "普通话 · 男声"},
+	{"zm_yunjian", "Yunjian", "普通话 · 男声"},
+	{"zm_yunxia", "Yunxia", "普通话 · 男声"},
+	{"zm_yunyang", "Yunyang", "普通话 · 男声"},
+}
+
+// VoiceLang is the language a voice speaks: "zh" for Kokoro's Mandarin
+// voices and piper's zh_* voices, "en" for all others.
+func VoiceLang(voice string) string {
+	if strings.HasPrefix(voice, KokoroPrefix+"z") || strings.HasPrefix(voice, "zh_") {
+		return "zh"
+	}
+	return "en"
+}
+
 // Kokoro runs Kokoro-82M in one long-lived Python process, so the model is
 // loaded once. Requests are served one at a time.
 type Kokoro struct {
@@ -76,13 +98,51 @@ func (k *Kokoro) Check() error {
 }
 
 // KokoroModelFiles are the files of the Kokoro-82M repository Repi uses,
-// relative to it: the config, the weights and one style file per voice.
+// relative to it: the config, the weights and one style file per English
+// voice. LocalModel needs all of them; the Mandarin voices come apart, in
+// KokoroZhFiles, as installs from before they existed lack them.
 func KokoroModelFiles() []string {
 	files := []string{"config.json", "kokoro-v1_0.pth"}
 	for _, v := range KokoroVoices {
 		files = append(files, "voices/"+v.ID+".pt")
 	}
 	return files
+}
+
+// KokoroZhFiles are the style files of the Mandarin voices.
+func KokoroZhFiles() []string {
+	var files []string
+	for _, v := range KokoroZhVoices {
+		files = append(files, "voices/"+v.ID+".pt")
+	}
+	return files
+}
+
+// ZhReady reports whether Kokoro can speak Chinese: misaki's Chinese
+// dependencies are installed and, with a local model, the Mandarin voices
+// are there too (without one the worker fetches them from Hugging Face).
+func (k *Kokoro) ZhReady() bool {
+	if k.Check() != nil || !hasPackage(filepath.Join(k.Dir, "venv"), "jieba") || !hasPackage(filepath.Join(k.Dir, "venv"), "pypinyin") {
+		return false
+	}
+	if !k.LocalModel() {
+		return true
+	}
+	for _, f := range KokoroZhFiles() {
+		if _, err := os.Stat(filepath.Join(k.ModelDir(), filepath.FromSlash(f))); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// hasPackage reports whether the Python package name is installed in venv.
+func hasPackage(venv, name string) bool {
+	m, _ := filepath.Glob(filepath.Join(venv, "lib", "python*", "site-packages", name, "__init__.py"))
+	if len(m) == 0 { // Windows
+		m, _ = filepath.Glob(filepath.Join(venv, "Lib", "site-packages", name, "__init__.py"))
+	}
+	return len(m) > 0
 }
 
 // ModelDir is where the one-click setup puts the model files.
