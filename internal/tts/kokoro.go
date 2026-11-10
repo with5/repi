@@ -1,20 +1,12 @@
 package tts
 
 import (
-	"bufio"
 	"context"
 	_ "embed"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
-	"sync"
-	"sync/atomic"
 )
 
 //go:embed kokoro_worker.py
@@ -69,23 +61,11 @@ type Kokoro struct {
 	Dir   string // holds venv/ and worker.py, ~/.local/share/repi/kokoro
 	Cache string // directory of cached WAV files
 
-	mu     sync.Mutex // serializes requests and guards the fields below
-	cmd    *exec.Cmd
-	in     io.WriteCloser
-	out    *bufio.Reader
-	nextID int
-
-	smu    sync.Mutex // guards status, which the UI reads while mu is held
-	status string
+	w worker
 }
 
 // Python is the interpreter of the worker's virtual environment.
-func (k *Kokoro) Python() string {
-	if runtime.GOOS == "windows" {
-		return filepath.Join(k.Dir, "venv", "Scripts", "python.exe")
-	}
-	return filepath.Join(k.Dir, "venv", "bin", "python")
-}
+func (k *Kokoro) Python() string { return venvPython(filepath.Join(k.Dir, "venv")) }
 
 // Check reports why Kokoro cannot be used, or nil.
 func (k *Kokoro) Check() error {
@@ -129,99 +109,14 @@ func (k *Kokoro) workerEnv() []string {
 }
 
 // Status is a short description of what the worker is doing, for the UI.
-func (k *Kokoro) Status() string {
-	k.smu.Lock()
-	defer k.smu.Unlock()
-	return k.status
-}
-
-func (k *Kokoro) setStatus(s string) {
-	k.smu.Lock()
-	k.status = s
-	k.smu.Unlock()
-}
-
-// start launches the worker and waits for its ready line. k.mu is held.
-func (k *Kokoro) start() error {
-	if err := k.Check(); err != nil {
-		return err
-	}
-	script := filepath.Join(k.Dir, "worker.py")
-	if err := os.WriteFile(script, kokoroWorker, 0o644); err != nil {
-		return err
-	}
-	cmd := exec.Command(k.Python(), "-u", script)
-	hideWindow(cmd)
-	cmd.Env = k.workerEnv()
-	in, err := cmd.StdinPipe()
-	if err != nil {
-		return err
-	}
-	out, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return err
-	}
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	k.setStatus("正在加载 Kokoro 模型（首次使用会下载约 330MB）…")
-	var loading atomic.Bool
-	loading.Store(true)
-	go func() { // loading progress: show the last line, until ready
-		sc := bufio.NewScanner(stderr)
-		sc.Buffer(make([]byte, 64*1024), 1<<20)
-		for sc.Scan() {
-			if l := strings.TrimSpace(sc.Text()); l != "" && loading.Load() {
-				k.setStatus("Kokoro: " + tail(l, 80))
-			}
-		}
-	}()
-	rd := bufio.NewReaderSize(out, 1<<20)
-	for { // skip anything a library printed before the ready line
-		line, err := rd.ReadString('\n')
-		if err != nil {
-			cmd.Wait()
-			return fmt.Errorf("Kokoro 启动失败：%s", k.Status())
-		}
-		var ready struct {
-			Ready bool `json:"ready"`
-		}
-		if json.Unmarshal([]byte(line), &ready) == nil && ready.Ready {
-			loading.Store(false)
-			break
-		}
-	}
-	k.cmd, k.in, k.out = cmd, in, rd
-	k.setStatus("")
-	return nil
-}
-
-func tail(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return "…" + string(r[len(r)-n:])
-}
+func (k *Kokoro) Status() string { return k.w.Status() }
 
 // Close stops the worker.
-func (k *Kokoro) Close() {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	k.stopLocked()
-}
+func (k *Kokoro) Close() { k.w.Close() }
 
-func (k *Kokoro) stopLocked() {
-	if k.cmd != nil {
-		k.in.Close()
-		k.cmd.Process.Kill()
-		k.cmd.Wait()
-		k.cmd, k.in, k.out = nil, nil, nil
-	}
+func (k *Kokoro) spec() workerSpec {
+	return workerSpec{Name: "Kokoro", Python: k.Python(), Script: filepath.Join(k.Dir, "worker.py"), Code: kokoroWorker,
+		Env: k.workerEnv(), Loading: "正在加载 Kokoro 模型（首次使用会下载约 330MB）…"}
 }
 
 // CachePath is where the audio of a sentence by a voice is cached.
@@ -248,59 +143,42 @@ func (k *Kokoro) Synth(ctx context.Context, sentence, voice string, speed float6
 	if err := os.MkdirAll(k.Cache, 0o755); err != nil {
 		return "", err
 	}
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	if ctx.Err() != nil {
-		return "", ctx.Err()
-	}
-	if k.cmd == nil {
-		if err := k.start(); err != nil {
-			return "", err
-		}
-	}
-	k.nextID++
-	req, _ := json.Marshal(map[string]any{"id": k.nextID, "text": sentence, "voice": strings.TrimPrefix(voice, KokoroPrefix), "speed": speed, "out": out})
-	if _, err := k.in.Write(append(req, '\n')); err != nil {
-		k.stopLocked()
+	if err := k.Check(); err != nil {
 		return "", err
 	}
-	line, err := k.out.ReadString('\n')
-	if err != nil {
-		k.stopLocked()
-		return "", errors.New("Kokoro 进程已退出：" + k.Status())
-	}
-	var resp struct {
-		OK    bool   `json:"ok"`
-		Error string `json:"error"`
-	}
-	if err := json.Unmarshal([]byte(line), &resp); err != nil {
-		k.stopLocked()
+	req := map[string]any{"text": sentence, "voice": strings.TrimPrefix(voice, KokoroPrefix), "speed": speed, "out": out}
+	if err := k.w.call(ctx, k.spec, req); err != nil {
 		return "", err
-	}
-	if !resp.OK {
-		return "", errors.New("Kokoro: " + resp.Error)
 	}
 	return out, nil
 }
 
-// Router sends "kokoro:" voices to Kokoro and all others to Piper.
+// Router sends "kokoro:" voices to Kokoro, "clone:" voices to Clone and
+// all others to Piper.
 type Router struct {
 	Piper  *Piper
 	Kokoro *Kokoro
+	Clone  *Clone
 }
 
 // Synth implements Synth.
 func (r *Router) Synth(ctx context.Context, sentence, voice string, speed float64) (string, error) {
-	if strings.HasPrefix(voice, KokoroPrefix) {
+	switch {
+	case strings.HasPrefix(voice, KokoroPrefix):
 		return r.Kokoro.Synth(ctx, sentence, voice, speed)
+	case strings.HasPrefix(voice, ClonePrefix) && r.Clone != nil:
+		return r.Clone.Synth(ctx, sentence, voice, speed)
 	}
 	return r.Piper.Synth(ctx, sentence, voice, speed)
 }
 
 // Cached reports whether the sentence is already synthesized by voice.
 func (r *Router) Cached(sentence, voice string, speed float64) bool {
-	if strings.HasPrefix(voice, KokoroPrefix) {
+	switch {
+	case strings.HasPrefix(voice, KokoroPrefix):
 		return r.Kokoro.Cached(sentence, voice, speed)
+	case strings.HasPrefix(voice, ClonePrefix) && r.Clone != nil:
+		return r.Clone.Cached(sentence, voice, speed)
 	}
 	return r.Piper.Cached(sentence, voice, speed)
 }
