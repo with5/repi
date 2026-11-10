@@ -26,6 +26,7 @@
 
 - 🔁 **循环方式**：整篇循环，或每句重复 N 次再下一句。
 - 🗣️ **自然音色**：27 个 Kokoro-82M 英语音色（美音/英音、男声/女声），本地 GPU/CPU 生成；也支持 [piper-tts](https://github.com/rhasspy/piper) 作为轻量备选。
+- 🎙️ **用你自己的声音**：录 10 秒左右（或导入一段录音），Repi 就用这个声音朗读，由 [Chatterbox](https://github.com/resemble-ai/chatterbox) 在本地克隆。
 - 🎤 **卡拉 OK 大屏**：大字显示，当前读到的词高亮，未读到的词变淡。
 - 📖 **点词即查**：朗读自动暂停，卡片显示音标、中文释义、考试标签（高考/四级/雅思…）和词形；`went`、`running` 等变形会指向原形。基于离线 [ECDICT](https://github.com/skywind3000/ECDICT)。
 - 🌐 **句子翻译**：当前句下方显示中文，每句只请求一次并缓存。
@@ -56,6 +57,8 @@ venv/bin/python -m spacy download en_core_web_sm
 ```
 
 </details>
+
+**声音克隆**（可选，需要先装好 Kokoro）。在音色面板里 Kokoro 卡片下方，点 **安装声音克隆**。它会把 [Chatterbox](https://github.com/resemble-ai/chatterbox)（MIT 许可）装在 Kokoro 旁边，复用 Kokoro 的 uv、Python 和 PyTorch，所以只需下载约 3.5GB（主要是模型），装好后最多占用约 9GB 磁盘。之后在安静的房间录 8–15 秒英文，或导入一个音频文件（WAV、FLAC、MP3、OGG），新音色会自动收藏并试听。强烈建议使用 NVIDIA GPU：Chatterbox 需要约 4GB 显存，用 CPU 生成一句可能要十几秒。录音依赖 PortAudio，Windows 和 macOS 的安装包已自带，Linux 需要从发行版安装（`portaudio`）。生成的语音带有 Chatterbox 的隐形水印。请只克隆你自己或得到同意的人的声音。
 
 **piper-tts**（可选，CPU 即可）：安装 `piper-tts`，并把英文音色放在 `/usr/share/piper-voices`。
 
@@ -106,6 +109,8 @@ go build -o repi . && ./repi
 | 资料与进度 | `~/.local/share/repi/materials.json` |
 | 词典 | `~/.local/share/repi/dict/` |
 | Kokoro 环境 | `~/.local/share/repi/kokoro/` |
+| 声音克隆环境 | `~/.local/share/repi/clone/` |
+| 你的录音 | `~/.local/share/repi/voices/` |
 
 ## 工作原理
 
@@ -115,7 +120,7 @@ go build -o repi . && ./repi
 main.go           程序入口
 internal/
   text/           切句
-  tts/            Kokoro / piper 后端 + 缓存
+  tts/            Kokoro / Chatterbox / piper 后端 + 缓存
   player/         播放状态机 + 音频输出
   align/          词级时间估算
   dict/           离线 ECDICT 查词
@@ -137,7 +142,7 @@ go test ./...
 
 ## 致谢
 
-[MyGo](https://github.com/egoist/mygo) · [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) · [piper](https://github.com/rhasspy/piper) · [ECDICT](https://github.com/skywind3000/ECDICT) · [MyMemory](https://mymemory.translated.net)
+[MyGo](https://github.com/egoist/mygo) · [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) · [Chatterbox](https://github.com/resemble-ai/chatterbox) · [piper](https://github.com/rhasspy/piper) · [ECDICT](https://github.com/skywind3000/ECDICT) · [MyMemory](https://mymemory.translated.net)
 
 ## 社区认可与友情链接
 

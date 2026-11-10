@@ -2,8 +2,11 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/egoist/mygo/ui"
+
+	"repi/internal/tts"
 )
 
 // voicePanel lists all voices: audition each one with the sample, and star
@@ -18,11 +21,12 @@ func (m *model) voicePanel(c *ui.Context) {
 	})
 	ui.Text(c, "点「试听」听一下，点星标收藏。朗读时只会列出收藏的音色。").FontSize(12).TextColor(t.TextMuted)
 	m.kokoroSetupCard(c)
+	m.cloneCard(c)
 	ui.TextInput(c, &m.sample).Placeholder("试听用的句子").Label("试听文本")
 	if errText != "" {
 		ui.Text(c, errText).TextColor(t.Danger).FontSize(12)
 	}
-	if status := m.kokoro.Status(); status != "" {
+	if status := m.ttsStatus(); status != "" {
 		ui.Text(c, status).TextColor(t.TextMuted).FontSize(12).MaxLines(1)
 	}
 
@@ -74,6 +78,9 @@ func (m *model) voicePanel(c *ui.Context) {
 				star := "☆"
 				if fav {
 					star = "★"
+				}
+				if strings.HasPrefix(v.Name, tts.ClonePrefix) {
+					m.deleteVoiceButton(c, v)
 				}
 				b := ui.Button(c.Key("fav"), star).Label("收藏 " + v.Label).Width(40)
 				if fav {

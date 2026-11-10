@@ -26,6 +26,7 @@ Listening skill comes from hearing the same material many times, not from hearin
 
 - 🔁 **Loop modes** — whole-article loop, or repeat each sentence *N* times before moving on.
 - 🗣️ **Natural voices** — 27 Kokoro-82M voices (US/UK, male/female), generated locally on GPU or CPU. [piper-tts](https://github.com/rhasspy/piper) is supported as a lightweight fallback.
+- 🎙️ **Your own voice** — record about 10 seconds (or import a clip) and Repi reads in that voice, cloned locally with [Chatterbox](https://github.com/resemble-ai/chatterbox).
 - 🎤 **Karaoke big screen** — large type, the word being spoken is highlighted, unread words are dimmed.
 - 📖 **Click any word to look it up** — playback pauses, a card shows IPA, Chinese definitions, exam tags (CET-4, IELTS…) and word forms. Inflections like `went` / `running` resolve to their lemma. Powered by an offline [ECDICT](https://github.com/skywind3000/ECDICT) index.
 - 🌐 **Inline translation** — toggle a Chinese line under the current sentence; each sentence is translated once and cached.
@@ -56,6 +57,8 @@ venv/bin/python -m spacy download en_core_web_sm
 ```
 
 </details>
+
+**Voice cloning** (optional, needs Kokoro first). In the **Voices** panel, click **安装声音克隆** (Install voice cloning) on the card below Kokoro's. It installs [Chatterbox](https://github.com/resemble-ai/chatterbox) (MIT) next to Kokoro and reuses Kokoro's uv, Python and PyTorch build, so it downloads about 3.5 GB (mostly the model) and takes up to about 9 GB of disk. Then record 8–15 seconds of English in a quiet room, or import an audio file (WAV, FLAC, MP3, OGG). The new voice is starred and auditioned at once. An NVIDIA GPU is strongly recommended: Chatterbox needs about 4 GB of VRAM, and on CPU a sentence can take ten seconds or more. Recording uses PortAudio, which the Windows and macOS wheels bundle; on Linux install it from your distribution (`portaudio`). Generated audio carries Chatterbox's inaudible watermark. Only clone your own voice, or one you have permission to use.
 
 **piper-tts** (optional, CPU-friendly): install `piper-tts` and put English voices in `/usr/share/piper-voices`.
 
@@ -106,6 +109,8 @@ On first lookup, click **Download dictionary** on the card (66 MB download, 28 M
 | Materials & progress | `~/.local/share/repi/materials.json` |
 | Dictionary | `~/.local/share/repi/dict/` |
 | Kokoro environment | `~/.local/share/repi/kokoro/` |
+| Voice-cloning environment | `~/.local/share/repi/clone/` |
+| Your voice recordings | `~/.local/share/repi/voices/` |
 
 ## How it works
 
@@ -115,7 +120,7 @@ Text is split into sentences (aware of `Mr.`, `e.g.`, decimals and quotes). Each
 main.go           app entry
 internal/
   text/           sentence splitting
-  tts/            Kokoro / piper backends + cache
+  tts/            Kokoro / Chatterbox / piper backends + cache
   player/         playback state machine + audio output
   align/          word-level timing estimation
   dict/           offline ECDICT lookup
@@ -137,7 +142,7 @@ Issues and pull requests are welcome. If you're planning something big, open an 
 
 ## Acknowledgements
 
-[MyGo](https://github.com/egoist/mygo) · [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) · [piper](https://github.com/rhasspy/piper) · [ECDICT](https://github.com/skywind3000/ECDICT) · [MyMemory](https://mymemory.translated.net)
+[MyGo](https://github.com/egoist/mygo) · [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) · [Chatterbox](https://github.com/resemble-ai/chatterbox) · [piper](https://github.com/rhasspy/piper) · [ECDICT](https://github.com/skywind3000/ECDICT) · [MyMemory](https://mymemory.translated.net)
 
 ## Community & Friends
 

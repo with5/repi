@@ -37,6 +37,7 @@ type model struct {
 	st     *store.Store
 	piper  *tts.Piper
 	kokoro *tts.Kokoro
+	clone  *tts.Clone
 	synth  *tts.Router
 	pool   *tts.Pool
 	pl     *player.Player
@@ -73,6 +74,10 @@ type model struct {
 	showTrans   bool // the big screen shows the Chinese of the sentence
 	dic         dictState
 	kokoroSetup setupState
+	cloneSetup  setupState
+	cloneUI     cloneState
+	cloneName   string // name for the next cloned voice, as typed
+	confirmVoc  string // cloned voice awaiting a second click on delete
 	tr          translator
 	tran        transState
 	lookup      lookupCard
@@ -107,8 +112,10 @@ func newModel(out player.Output) *model {
 	m.st = st
 	audioDir := filepath.Join(store.CacheDir(), "audio")
 	m.piper = &tts.Piper{Cache: audioDir, Voices: tts.ListVoices(tts.DefaultVoiceDirs...)}
-	m.kokoro = &tts.Kokoro{Dir: filepath.Join(filepath.Dir(store.DefaultPath()), "kokoro"), Cache: audioDir}
-	m.synth = &tts.Router{Piper: m.piper, Kokoro: m.kokoro}
+	data := filepath.Dir(store.DefaultPath())
+	m.kokoro = &tts.Kokoro{Dir: filepath.Join(data, "kokoro"), Cache: audioDir}
+	m.clone = &tts.Clone{Dir: filepath.Join(data, "clone"), Voices: filepath.Join(data, "voices"), Cache: audioDir}
+	m.synth = &tts.Router{Piper: m.piper, Kokoro: m.kokoro, Clone: m.clone}
 	m.pool = &tts.Pool{S: m.synth}
 	if m.piper.Check() != nil && m.kokoro.Check() != nil && m.setupErr == "" {
 		m.setupErr = noTTSErr
@@ -162,13 +169,17 @@ func speedLabel(v float64) string {
 }
 
 // voiceNames lists the voices that can be used: Kokoro voices when its
-// environment is installed, then the piper voices.
+// environment is installed, the cloned voices when that engine is, then the
+// piper voices.
 func (m *model) voiceNames() []string {
 	var out []string
 	if m.kokoro.Check() == nil {
 		for _, v := range tts.KokoroVoices {
 			out = append(out, tts.KokoroPrefix+v.ID)
 		}
+	}
+	for _, v := range m.cloneVoices() {
+		out = append(out, tts.ClonePrefix+v.ID)
 	}
 	for _, v := range m.piper.Voices {
 		out = append(out, v.Name)

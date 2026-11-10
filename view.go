@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -207,7 +208,7 @@ func (m *model) reader(c *ui.Context) {
 			ui.Text(c, "已听 "+fmtListen(d)).TextColor(t.TextMuted).FontSize(12)
 		}
 		rd, total := m.progress()
-		if status := m.kokoro.Status(); status != "" {
+		if status := m.ttsStatus(); status != "" {
 			ui.Text(c, status).TextColor(t.TextMuted).FontSize(12).MaxLines(1)
 		} else if rd < total {
 			ui.Textf(c, "合成中 %d/%d", rd, total).TextColor(t.TextMuted).FontSize(12)
@@ -330,8 +331,13 @@ func (m *model) controls(c *ui.Context, st player.Snapshot, n int) {
 	ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
 		if voices := m.readingVoices(); len(voices) > 0 {
 			m.voiceSel = m.voice
-			if ui.Select(c, &m.voiceSel, voices).Width(240).Label("音色").Changed() {
-				m.applyVoiceSpeed(m.voiceSel, m.speed)
+			labels := m.voiceLabels(voices)
+			sel := labels[slices.Index(voices, m.voice)]
+			if ui.Select(c, &sel, labels).Width(240).Label("音色").Changed() {
+				if i := slices.Index(labels, sel); i >= 0 {
+					m.voiceSel = voices[i]
+					m.applyVoiceSpeed(m.voiceSel, m.speed)
+				}
 			}
 		}
 		if len(m.favorites) == 0 {

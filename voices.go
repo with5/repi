@@ -20,9 +20,13 @@ type voiceInfo struct {
 	Detail string
 }
 
-// voiceList lists every usable voice: Kokoro voices first, then piper.
+// voiceList lists every usable voice: the user's cloned voices first, then
+// Kokoro, then piper.
 func (m *model) voiceList() []voiceInfo {
 	var out []voiceInfo
+	for _, v := range m.cloneVoices() {
+		out = append(out, voiceInfo{tts.ClonePrefix + v.ID, v.Name, fmt.Sprintf("克隆 · Chatterbox · 录音 %.0f 秒", v.Seconds)})
+	}
 	if m.kokoro.Check() == nil {
 		for _, v := range tts.KokoroVoices {
 			out = append(out, voiceInfo{tts.KokoroPrefix + v.ID, v.Label, "Kokoro · " + v.Detail})
@@ -53,6 +57,27 @@ func (m *model) toggleFavorite(name string) {
 		m.favorites = append(slices.Clone(m.favorites), name)
 	}
 	m.saveSettings()
+}
+
+// voiceLabels are what the reader's selector shows for voices: a cloned
+// voice by the name the user gave it, others by their stored name. A name
+// that would be shown twice falls back to the stored name.
+func (m *model) voiceLabels(voices []string) []string {
+	names := map[string]string{}
+	for _, v := range m.cloneVoices() {
+		names[tts.ClonePrefix+v.ID] = v.Name + "（我的声音）"
+	}
+	out := make([]string, len(voices))
+	seen := map[string]bool{}
+	for i, v := range voices {
+		l, ok := names[v]
+		if !ok || seen[l] || slices.Contains(voices, l) {
+			l = v
+		}
+		seen[l] = true
+		out[i] = l
+	}
+	return out
 }
 
 // readingVoices are the voices the reader offers: the favorites that can be

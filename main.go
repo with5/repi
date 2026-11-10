@@ -29,6 +29,7 @@ func main() {
 		m.pl.Close()
 		m.st.Save()
 		m.kokoro.Close()
+		m.clone.Close()
 	})
 	mygo.App.WhenReady(func() {
 		m.win = mygo.NewWindow(mygo.WindowOptions{

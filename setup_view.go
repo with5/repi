@@ -10,7 +10,8 @@ import (
 	"repi/internal/setup"
 )
 
-// setupState is the one-click Kokoro install, which runs on another goroutine.
+// setupState is a one-click install (Kokoro, or the voice-cloning engine),
+// which runs on another goroutine.
 type setupState struct {
 	// mirror and gpu are the checkboxes; only the UI thread touches them,
 	// and gpuAsked, set once the GPU check has started.
@@ -46,14 +47,24 @@ func (m *model) checkGPU() {
 }
 
 func (m *model) startSetup() {
-	s := &m.kokoroSetup
+	k := &m.kokoroSetup
+	m.startInstall(k, setup.Options{Dir: m.kokoro.Dir, Mirror: k.mirror, GPU: k.gpu && k.gpuOK})
+}
+
+// startCloneSetup installs the voice-cloning engine next to Kokoro. The
+// mirror choice is Kokoro's checkbox, shared by both cards.
+func (m *model) startCloneSetup() {
+	m.startInstall(&m.cloneSetup, setup.Options{Dir: m.kokoro.Dir, Clone: m.clone.Dir, Mirror: m.kokoroSetup.mirror})
+}
+
+// startInstall runs the install o in the background, reporting into s.
+func (m *model) startInstall(s *setupState, o setup.Options) {
 	s.mu.Lock()
 	if s.running {
 		s.mu.Unlock()
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	o := setup.Options{Dir: m.kokoro.Dir, Mirror: s.mirror, GPU: s.gpu && s.gpuOK}
 	s.running, s.err, s.cancel, s.progress = true, "", cancel, setup.Progress{Step: 1, Steps: 6, Title: "准备"}
 	s.mu.Unlock()
 	m.saveSettings() // remembers the mirror choice
@@ -78,8 +89,7 @@ func (m *model) startSetup() {
 	}()
 }
 
-func (m *model) cancelSetup() {
-	s := &m.kokoroSetup
+func (m *model) cancelSetup(s *setupState) {
 	s.mu.Lock()
 	if s.cancel != nil {
 		s.cancel()
@@ -144,7 +154,7 @@ func (m *model) kokoroSetupCard(c *ui.Context) {
 				ui.Text(c, p.Detail).FontSize(12).TextColor(t.TextMuted).MaxLines(1)
 			}
 			if ui.Button(c, "取消").Clicked() {
-				m.cancelSetup()
+				m.cancelSetup(s)
 			}
 			return
 		}
