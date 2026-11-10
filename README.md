@@ -26,6 +26,7 @@ Listening skill comes from hearing the same material many times, not from hearin
 
 - 🔁 **Loop modes** — whole-article loop, or repeat each sentence *N* times before moving on.
 - 🗣️ **Natural voices** — 27 Kokoro-82M voices (US/UK, male/female), generated locally on GPU or CPU. [piper-tts](https://github.com/rhasspy/piper) is supported as a lightweight fallback.
+- 🀄 **Chinese too** — paste Chinese text and Repi reads it with Kokoro's 8 Mandarin voices; the big screen highlights it character by character. English and Chinese materials each remember their own voice.
 - 🎙️ **Your own voice** — record about 10 seconds (or import a clip) and Repi reads in that voice, cloned locally with [Chatterbox](https://github.com/resemble-ai/chatterbox).
 - 🎤 **Karaoke big screen** — large type, the word being spoken is highlighted, unread words are dimmed.
 - 📖 **Click any word to look it up** — playback pauses, a card shows IPA, Chinese definitions, exam tags (CET-4, IELTS…) and word forms. Inflections like `went` / `running` resolve to their lemma. Powered by an offline [ECDICT](https://github.com/skywind3000/ECDICT) index.
@@ -52,11 +53,13 @@ Listening skill comes from hearing the same material many times, not from hearin
 ```sh
 mkdir -p ~/.local/share/repi/kokoro && cd ~/.local/share/repi/kokoro
 uv venv --python 3.12 venv
-VIRTUAL_ENV=$PWD/venv uv pip install -U kokoro soundfile pip
+VIRTUAL_ENV=$PWD/venv uv pip install -U kokoro "misaki[zh]" soundfile pip
 venv/bin/python -m spacy download en_core_web_sm
 ```
 
 </details>
+
+**Chinese** comes with a new Kokoro install. A Kokoro installed by an older Repi shows an **安装中文朗读** (Install Chinese reading) card in the **Voices** panel, and on any Chinese material: it adds misaki's Chinese G2P (jieba, pypinyin) and the 8 Mandarin voices to the existing environment, about 30 MB, without touching English. A material is Chinese when it has at least as many Chinese characters as English words; it then splits at 。！？, is read by the Chinese voice you chose, and English words inside it are phonemized as English (Kokoro's Mandarin voices still give them an accent). Dictionary lookup works on the English words only, and the translation switch is hidden.
 
 **Voice cloning** (optional, needs Kokoro first). In the **Voices** panel, click **安装声音克隆** (Install voice cloning) on the card below Kokoro's. It installs [Chatterbox](https://github.com/resemble-ai/chatterbox) (MIT) next to Kokoro and reuses Kokoro's uv, Python and PyTorch build, so it downloads about 3.5 GB (mostly the model) and takes up to about 9 GB of disk. Then record 8–15 seconds of English in a quiet room, or import an audio file (WAV, FLAC, MP3, OGG). The new voice is starred and auditioned at once. An NVIDIA GPU is strongly recommended: Chatterbox needs about 4 GB of VRAM, and on CPU a sentence can take ten seconds or more. Recording uses PortAudio, which the Windows and macOS wheels bundle; on Linux install it from your distribution (`portaudio`). Generated audio carries Chatterbox's inaudible watermark. Only clone your own voice, or one you have permission to use.
 

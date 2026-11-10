@@ -3,12 +3,15 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/egoist/mygo/ui"
 
 	"repi/internal/align"
 	"repi/internal/player"
+	"repi/internal/text"
 )
 
 func (m *model) setBigScreen(on bool) {
@@ -83,10 +86,12 @@ func (m *model) bigView(c *ui.Context, st player.Snapshot, sents []string) {
 			info = " · 第 " + strconv.Itoa(st.Rep+1) + "/" + strconv.Itoa(st.Repeat) + " 遍"
 		}
 		ui.Text(c, "第 "+strconv.Itoa(idx+1)+"/"+strconv.Itoa(len(sents))+" 句"+info).FontSize(14).TextColor(t.TextMuted).Grow(1)
-		if ui.Switch(c, &m.showTrans).Label("翻译").Changed() {
-			m.setTranslate(m.showTrans)
+		if !m.zhText { // translations are into Chinese
+			if ui.Switch(c, &m.showTrans).Label("翻译").Changed() {
+				m.setTranslate(m.showTrans)
+			}
+			ui.Text(c, "翻译").FontSize(12).TextColor(t.TextMuted)
 		}
-		ui.Text(c, "翻译").FontSize(12).TextColor(t.TextMuted)
 		size := float64(m.bigFont)
 		ui.Text(c, "字号").FontSize(12).TextColor(t.TextMuted)
 		if ui.Stepper(c, &size, minBigFont, maxBigFont, 4).Label("字号").Changed() {
@@ -97,21 +102,40 @@ func (m *model) bigView(c *ui.Context, st player.Snapshot, sents []string) {
 	})
 
 	area := ui.Column(c.Key("big")).Grow(1).MinHeight(0).Center().Padding(0, 24)
-	b := area.Bounds()     // the previous frame's; empty in the first
+	b := area.Bounds() // the previous frame's; empty in the first
+	showTrans := m.showTrans && !m.zhText
 	reserve := float32(40) // room under the sentence for the Chinese
-	if m.showTrans {
+	if showTrans {
 		reserve += 110
 	}
 	fs := m.fitFont(sents[idx], float32(m.bigFont), b.W-48, b.H-reserve)
 
 	area.Children(func() {
+		// Chinese is set solid, a character a token; a space in it (around
+		// an English word) becomes a margin.
+		cjk := strings.IndexFunc(sents[idx], text.IsHan) >= 0
+		gap := fs * 0.3
+		if cjk {
+			gap = 0
+		}
 		ui.Scroll(c).MaxWidth(1400).Children(func() {
-			ui.Row(c).Wrap().Justify(ui.Center).GapX(fs * 0.3).GapY(fs * 0.25).Children(func() {
+			ui.Row(c).Wrap().Justify(ui.Center).GapX(gap).GapY(fs * 0.25).Children(func() {
 				for i, tk := range tokens {
-					w := ui.Row(c.Key(i)).Padding(fs*0.04, fs*0.16).Cursor(ui.CursorPointer)
+					w := ui.Row(c.Key(i)).Padding(fs*0.04, fs*0.16)
+					if cjk {
+						w.Padding(fs*0.04, fs*0.02)
+						if tk.Space {
+							w.MarginStart(fs * 0.25)
+						}
+					}
+					// only English words can be looked up in the dictionary
+					lookup := strings.IndexFunc(tk.Text, isLatin) >= 0
+					if lookup {
+						w.Cursor(ui.CursorPointer)
+					}
 					if i == active {
 						w.Background(t.Accent.Alpha(0.30))
-					} else if w.Hovered() {
+					} else if lookup && w.Hovered() {
 						w.Background(t.Text.Alpha(0.10)) // a word can be clicked to look it up
 					}
 					w.Children(func() {
@@ -120,13 +144,13 @@ func (m *model) bigView(c *ui.Context, st player.Snapshot, sents []string) {
 							txt.TextColor(t.TextMuted) // not said yet
 						}
 					})
-					if w.Clicked() {
+					if lookup && w.Clicked() {
 						m.openLookup(tk.Text, st.Playing)
 					}
 				}
 			})
 		})
-		if m.showTrans {
+		if showTrans {
 			m.translationView(c, sents[idx], fs)
 		}
 		if st.Waiting {
@@ -137,6 +161,9 @@ func (m *model) bigView(c *ui.Context, st player.Snapshot, sents []string) {
 		}
 	})
 }
+
+// isLatin reports whether r is a Latin letter, as English words have.
+func isLatin(r rune) bool { return r < 0x250 && unicode.IsLetter(r) }
 
 // fitFont returns the largest font size up to max at which the sentence fits
 // in w by h, never below minBigFont. Words are set apart by gaps and padding,

@@ -26,6 +26,7 @@
 
 - 🔁 **循环方式**：整篇循环，或每句重复 N 次再下一句。
 - 🗣️ **自然音色**：27 个 Kokoro-82M 英语音色（美音/英音、男声/女声），本地 GPU/CPU 生成；也支持 [piper-tts](https://github.com/rhasspy/piper) 作为轻量备选。
+- 🀄 **也能读中文**：粘贴中文资料，Repi 用 Kokoro 的 8 个普通话音色朗读，大屏逐字高亮。英文资料和中文资料各自记住自己的音色。
 - 🎙️ **用你自己的声音**：录 10 秒左右（或导入一段录音），Repi 就用这个声音朗读，由 [Chatterbox](https://github.com/resemble-ai/chatterbox) 在本地克隆。
 - 🎤 **卡拉 OK 大屏**：大字显示，当前读到的词高亮，未读到的词变淡。
 - 📖 **点词即查**：朗读自动暂停，卡片显示音标、中文释义、考试标签（高考/四级/雅思…）和词形；`went`、`running` 等变形会指向原形。基于离线 [ECDICT](https://github.com/skywind3000/ECDICT)。
@@ -52,11 +53,13 @@
 ```sh
 mkdir -p ~/.local/share/repi/kokoro && cd ~/.local/share/repi/kokoro
 uv venv --python 3.12 venv
-VIRTUAL_ENV=$PWD/venv uv pip install -U kokoro soundfile pip
+VIRTUAL_ENV=$PWD/venv uv pip install -U kokoro "misaki[zh]" soundfile pip
 venv/bin/python -m spacy download en_core_web_sm
 ```
 
 </details>
+
+**中文朗读**：新装的 Kokoro 自带。旧版 Repi 装的 Kokoro，会在音色面板和每篇中文资料上显示 **安装中文朗读** 卡片：它往现有环境里补装 misaki 的中文分词（jieba、pypinyin）和 8 个普通话音色，约 30MB，不影响英文朗读。中文字数不少于英文单词数的资料算作中文：按 。！？ 分句，用你选的中文音色朗读，夹在其中的英文单词按英文发音（普通话音色读英文仍带口音）。查词只对其中的英文单词有效，翻译开关会隐藏。
 
 **声音克隆**（可选，需要先装好 Kokoro）。在音色面板里 Kokoro 卡片下方，点 **安装声音克隆**。它会把 [Chatterbox](https://github.com/resemble-ai/chatterbox)（MIT 许可）装在 Kokoro 旁边，复用 Kokoro 的 uv、Python 和 PyTorch，所以只需下载约 3.5GB（主要是模型），装好后最多占用约 9GB 磁盘。之后在安静的房间录 8–15 秒英文，或导入一个音频文件（WAV、FLAC、MP3、OGG），新音色会自动收藏并试听。强烈建议使用 NVIDIA GPU：Chatterbox 需要约 4GB 显存，用 CPU 生成一句可能要十几秒。录音依赖 PortAudio，Windows 和 macOS 的安装包已自带，Linux 需要从发行版安装（`portaudio`）。生成的语音带有 Chatterbox 的隐形水印。请只克隆你自己或得到同意的人的声音。
 

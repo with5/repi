@@ -7,11 +7,17 @@ import (
 	"strings"
 	"sync"
 
+	"repi/internal/text"
 	"repi/internal/tts"
 )
 
-// defaultSample is what the voice panel speaks, until the user types another.
-const defaultSample = "The quick brown fox jumps over the lazy dog. Can you hear the difference?"
+// defaultSample is what the voice panel speaks, until the user types another;
+// defaultZhSample is what the Mandarin voices speak, as they cannot read
+// English text.
+const (
+	defaultSample   = "The quick brown fox jumps over the lazy dog. Can you hear the difference?"
+	defaultZhSample = "今天天气很好，我们一起去公园散步吧。你能听出不同音色的区别吗？"
+)
 
 // voiceInfo describes a voice for the voice panel.
 type voiceInfo struct {
@@ -29,6 +35,11 @@ func (m *model) voiceList() []voiceInfo {
 	}
 	if m.kokoro.Check() == nil {
 		for _, v := range tts.KokoroVoices {
+			out = append(out, voiceInfo{tts.KokoroPrefix + v.ID, v.Label, "Kokoro · " + v.Detail})
+		}
+	}
+	if m.zhOK {
+		for _, v := range tts.KokoroZhVoices {
 			out = append(out, voiceInfo{tts.KokoroPrefix + v.ID, v.Label, "Kokoro · " + v.Detail})
 		}
 	}
@@ -81,19 +92,57 @@ func (m *model) voiceLabels(voices []string) []string {
 }
 
 // readingVoices are the voices the reader offers: the favorites that can be
-// used, and the voice in use (so the selector never shows a voice that is not
-// the one speaking).
+// used and speak the material's language, and the voice in use (so the
+// selector never shows a voice that is not the one speaking).
 func (m *model) readingVoices() []string {
 	var out []string
-	for _, f := range m.favorites {
+	for _, f := range m.langFavorites() {
 		if m.hasVoice(f) {
 			out = append(out, f)
 		}
 	}
-	if m.voice != "" && !slices.Contains(out, m.voice) {
+	if m.canRead() && !slices.Contains(out, m.voice) {
 		out = append([]string{m.voice}, out...)
 	}
 	return out
+}
+
+// langFavorites are the favorites in the open material's language.
+func (m *model) langFavorites() []string {
+	var out []string
+	for _, f := range m.favorites {
+		if tts.VoiceLang(f) == m.lang() {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// favorite stars voice unless a voice in its language is starred already,
+// so a newly installed language shows up in the reader.
+func (m *model) favorite(voice string) {
+	for _, f := range m.favorites {
+		if tts.VoiceLang(f) == tts.VoiceLang(voice) {
+			return
+		}
+	}
+	m.favorites = append(slices.Clone(m.favorites), voice)
+}
+
+// sampleFor is the text voice auditions: the user's sample when it is in
+// the voice's language, else the default one of that language.
+func sampleFor(sample, voice string) string {
+	zh := text.IsChinese(sample)
+	if tts.VoiceLang(voice) == "zh" {
+		if !zh {
+			return defaultZhSample
+		}
+		return sample
+	}
+	if zh || strings.TrimSpace(sample) == "" {
+		return defaultSample
+	}
+	return sample
 }
 
 // auditioner speaks a sample in one voice at a time, apart from the player.
@@ -137,10 +186,7 @@ func (m *model) audition(voice string) {
 	m.aud.cancel, m.aud.voice, m.aud.state, m.aud.err = cancel, voice, "合成中", ""
 	gen := m.aud.gen
 	m.aud.mu.Unlock()
-	sample, speed := m.sample, m.speed
-	if strings.TrimSpace(sample) == "" {
-		sample = defaultSample
-	}
+	sample, speed := sampleFor(m.sample, voice), m.speed
 
 	// set changes the state only while this sample is still the current one.
 	set := func(f func()) {

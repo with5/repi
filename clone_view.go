@@ -194,22 +194,7 @@ func (m *model) deleteVoice(name string) {
 	if i := slices.Index(m.favorites, name); i >= 0 {
 		m.favorites = slices.Delete(slices.Clone(m.favorites), i, i+1)
 	}
-	if m.voice == name {
-		next := defaultVoice
-		if !m.hasVoice(next) {
-			if vs := m.voiceNames(); len(vs) > 0 {
-				next = vs[0]
-			}
-		}
-		if m.open {
-			m.applyVoiceSpeed(next, m.speed) // also saves
-		} else {
-			m.voice = next
-		}
-		m.voiceSel = m.voice
-	}
-	m.proc = processedCache{}
-	m.saveSettings()
+	m.repickVoices() // also saves
 }
 
 // deleteVoiceButton asks for a second click before deleting a cloned voice.

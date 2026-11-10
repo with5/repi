@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"github.com/egoist/mygo"
 	"path/filepath"
 	"strings"
@@ -26,7 +27,10 @@ const (
 	defaultBigFont = 60
 )
 
-const defaultVoice = "kokoro:af_heart"
+const (
+	defaultVoice   = "kokoro:af_heart"
+	defaultZhVoice = "kokoro:zf_xiaoxiao"
+)
 
 // noTTSErr is the setup error when neither piper nor Kokoro is installed.
 const noTTSErr = "没有可用的 TTS：可以在下面一键安装 Kokoro"
@@ -47,7 +51,8 @@ type model struct {
 	wake atomic.Pointer[func()]
 
 	mu        sync.Mutex
-	voice     string
+	voice     string // the voice reading the open material: enVoice or zhVoice
+	zhText    bool   // the open material is Chinese; see lang
 	speed     float64
 	sentences []string
 	ready     []bool
@@ -57,6 +62,10 @@ type model struct {
 
 	// UI-thread state.
 	setupErr    string
+	enVoice     string // the voice chosen for English material
+	zhVoice     string // and for Chinese material
+	zhOK        bool   // Kokoro can speak Chinese; see checkZh
+	zhSetup     setupState
 	materials   []store.Material
 	cur         store.Material
 	open        bool // cur is a material
@@ -122,7 +131,7 @@ func newModel(out player.Output) *model {
 	}
 
 	s := st.Settings()
-	m.voice, m.speed, m.hideText, m.favorites = s.Voice, s.Speed, s.HideText, s.Favorites
+	m.enVoice, m.zhVoice, m.speed, m.hideText, m.favorites = s.Voice, s.ZhVoice, s.Speed, s.HideText, s.Favorites
 	m.bigScreen, m.bigFont, m.showTrans = s.BigScreen, s.BigFont, s.Translate
 	m.dailyGoal = s.DailyGoal
 	m.initSetup(s.Mirror)
@@ -132,17 +141,9 @@ func newModel(out player.Output) *model {
 	}
 	m.sample = defaultSample
 	m.out = out
-	if !m.hasVoice(m.voice) {
-		if vs := m.voiceNames(); len(vs) > 0 {
-			m.voice = vs[0] // Kokoro first when installed
-			for _, v := range vs {
-				if v == defaultVoice {
-					m.voice = v
-					break
-				}
-			}
-		}
-	}
+	m.checkZh()
+	m.enVoice, m.zhVoice = m.pickVoice("en", m.enVoice), m.pickVoice("zh", m.zhVoice)
+	m.voice = m.enVoice
 	if m.speed == 0 {
 		m.speed = 1
 	}
@@ -169,12 +170,17 @@ func speedLabel(v float64) string {
 }
 
 // voiceNames lists the voices that can be used: Kokoro voices when its
-// environment is installed, the cloned voices when that engine is, then the
-// piper voices.
+// environment is installed (the Mandarin ones when it can speak Chinese),
+// the cloned voices when that engine is, then the piper voices.
 func (m *model) voiceNames() []string {
 	var out []string
 	if m.kokoro.Check() == nil {
 		for _, v := range tts.KokoroVoices {
+			out = append(out, tts.KokoroPrefix+v.ID)
+		}
+	}
+	if m.zhOK {
+		for _, v := range tts.KokoroZhVoices {
 			out = append(out, tts.KokoroPrefix+v.ID)
 		}
 	}
@@ -196,6 +202,69 @@ func (m *model) hasVoice(name string) bool {
 	return false
 }
 
+// checkZh looks again whether Kokoro can speak Chinese; it is kept, as
+// voiceNames is asked every frame.
+func (m *model) checkZh() { m.zhOK = m.kokoro.ZhReady() }
+
+// pickVoice is want if it is a usable voice in lang; else the default voice
+// of lang, or the first one. With no voice in lang it keeps want, so a
+// setting survives an engine that is missing for now.
+func (m *model) pickVoice(lang, want string) string {
+	if m.hasVoice(want) && tts.VoiceLang(want) == lang {
+		return want
+	}
+	def := defaultVoice
+	if lang == "zh" {
+		def = defaultZhVoice
+	}
+	if m.hasVoice(def) {
+		return def
+	}
+	for _, v := range m.voiceNames() {
+		if tts.VoiceLang(v) == lang {
+			return v
+		}
+	}
+	return want
+}
+
+// lang is the language of the open material, "en" or "zh".
+func (m *model) lang() string {
+	if m.zhText {
+		return "zh"
+	}
+	return "en"
+}
+
+// voiceFor is the voice chosen for material in lang.
+func (m *model) voiceFor(lang string) string {
+	if lang == "zh" {
+		return m.zhVoice
+	}
+	return m.enVoice
+}
+
+// canRead reports whether the open material has a voice that can read it.
+func (m *model) canRead() bool {
+	return m.hasVoice(m.voice) && tts.VoiceLang(m.voice) == m.lang()
+}
+
+// repickVoices puts usable voices in both slots after voices came or went,
+// and switches the reader to its slot's voice if that changed.
+func (m *model) repickVoices() {
+	m.enVoice, m.zhVoice = m.pickVoice("en", m.enVoice), m.pickVoice("zh", m.zhVoice)
+	if v := m.voiceFor(m.lang()); v != m.voice {
+		if m.open {
+			m.applyVoiceSpeed(v, m.speed)
+		} else {
+			m.voice = v
+		}
+	}
+	m.voiceSel = m.voice
+	m.proc = processedCache{}
+	m.saveSettings()
+}
+
 func (m *model) invalidate() {
 	if f := m.wake.Load(); f != nil {
 		(*f)()
@@ -211,14 +280,20 @@ func (m *model) Audio(ctx context.Context, i int) (string, error) {
 		m.mu.Unlock()
 		return "", context.Canceled
 	}
-	s, voice, speed, gen := m.sentences[i], m.voice, m.speed, m.gen
+	s, voice, speed, gen, lang := m.sentences[i], m.voice, m.speed, m.gen, m.lang()
 	m.mu.Unlock()
+	if tts.VoiceLang(voice) != lang {
+		return "", errNoZhVoice
+	}
 	path, err := m.pool.Get(ctx, s, voice, speed)
 	if err == nil {
 		m.markReady(gen, i)
 	}
 	return path, err
 }
+
+// errNoZhVoice stops Chinese material from being read by an English voice.
+var errNoZhVoice = errors.New("还没有中文音色，请先安装中文朗读")
 
 func (m *model) markReady(gen, i int) {
 	m.mu.Lock()
@@ -237,8 +312,10 @@ func (m *model) openMaterial(mat store.Material) {
 	m.listenID.Store(int64(mat.ID))
 	m.lastIdx = -1
 	m.mu.Lock()
-	m.sentences = text.Split(mat.Text)
+	m.sentences, m.zhText = text.Split(mat.Text), text.IsChinese(mat.Text)
+	m.voice = m.voiceFor(m.lang())
 	m.mu.Unlock()
+	m.voiceSel = m.voice
 	m.pl.SetCount(len(m.sentences))
 	m.pl.SetMode(player.Mode(mat.Mode))
 	m.pl.SetRepeat(max(mat.Repeat, 1))
@@ -251,7 +328,7 @@ func (m *model) openMaterial(mat store.Material) {
 // saveSettings writes the voice, speed, favorites and last opened material.
 func (m *model) saveSettings() {
 	s := m.st.Settings()
-	s.Voice, s.Speed, s.HideText, s.Favorites = m.voice, m.speed, m.hideText, m.favorites
+	s.Voice, s.ZhVoice, s.Speed, s.HideText, s.Favorites = m.enVoice, m.zhVoice, m.speed, m.hideText, m.favorites
 	s.BigScreen, s.BigFont, s.Translate = m.bigScreen, m.bigFont, m.showTrans
 	s.DailyGoal = m.dailyGoal
 	s.Mirror = m.kokoroSetup.mirror
@@ -279,6 +356,10 @@ func (m *model) resynth() {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.stopFetch = cancel
 	m.mu.Unlock()
+	if tts.VoiceLang(voice) != m.lang() {
+		m.invalidate()
+		return // nothing can read it; the reader offers the install
+	}
 
 	start := m.pl.State().Index
 	var next atomic.Int64
@@ -323,11 +404,17 @@ func (m *model) sentenceList() ([]string, []bool) {
 	return m.sentences, append([]bool(nil), m.ready...)
 }
 
-// applyVoiceSpeed switches voice or speed and starts that audio.
+// applyVoiceSpeed switches voice or speed and starts that audio. The voice
+// becomes the choice for its language.
 func (m *model) applyVoiceSpeed(voice string, speed float64) {
 	m.mu.Lock()
 	m.voice, m.speed = voice, speed
 	m.mu.Unlock()
+	if tts.VoiceLang(voice) == "zh" {
+		m.zhVoice = voice
+	} else {
+		m.enVoice = voice
+	}
 	m.resynth()
 	m.pl.Restart()
 	m.saveSettings()

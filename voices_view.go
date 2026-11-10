@@ -21,6 +21,7 @@ func (m *model) voicePanel(c *ui.Context) {
 	})
 	ui.Text(c, "点「试听」听一下，点星标收藏。朗读时只会列出收藏的音色。").FontSize(12).TextColor(t.TextMuted)
 	m.kokoroSetupCard(c)
+	m.zhSetupCard(c)
 	m.cloneCard(c)
 	ui.TextInput(c, &m.sample).Placeholder("试听用的句子").Label("试听文本")
 	if errText != "" {
@@ -33,7 +34,7 @@ func (m *model) voicePanel(c *ui.Context) {
 	ui.Scroll(c).Grow(1).Gap(4).PaddingY(4).Children(func() {
 		for _, v := range m.voiceList() {
 			fav := m.isFavorite(v.Name)
-			current := v.Name == m.voice
+			current := v.Name == m.enVoice || v.Name == m.zhVoice
 			row := ui.Row(c.Key(v.Name)).Padding(6, 12).AlignItems(ui.Center).Gap(10).BorderWidth(0, 0, 0, 2).BorderColor(ui.Transparent)
 			switch { // being auditioned, the voice in use
 			case playing == v.Name:

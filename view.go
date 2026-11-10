@@ -46,7 +46,7 @@ func (m *model) view(c *ui.Context) {
 		if m.open && c.Shortcut(0, ui.KeyF) {
 			m.setBigScreen(!m.bigScreen)
 		}
-		if m.open && m.bigScreen && c.Shortcut(0, ui.KeyT) {
+		if m.open && m.bigScreen && !m.zhText && c.Shortcut(0, ui.KeyT) {
 			m.setTranslate(!m.showTrans)
 		}
 	}
@@ -77,7 +77,7 @@ func (m *model) view(c *ui.Context) {
 			default:
 				ui.Column(c).Fill().Center().Gap(8).Children(func() {
 					ui.Text(c, "磨耳朵").FontSize(28).Bold()
-					ui.Text(c, "新增一篇英文资料，让它一遍遍循环朗读。").TextColor(t.TextMuted)
+					ui.Text(c, "新增一篇英文或中文资料，让它一遍遍循环朗读。").TextColor(t.TextMuted)
 				})
 			}
 		})
@@ -157,7 +157,7 @@ func (m *model) startEdit(mat store.Material, clip string) {
 func (m *model) importFile() {
 	go func() {
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-			Title:   "选择英文文本",
+			Title:   "选择文本",
 			Filters: []mygo.FileFilter{{Name: "Text", Extensions: []string{"txt", "md"}}},
 		})
 		if err != nil || len(paths) == 0 {
@@ -184,7 +184,7 @@ func (m *model) importFile() {
 func (m *model) editor(c *ui.Context) {
 	ui.TextInput(c, &m.draftTitle).Placeholder("标题（可留空）").Label("标题")
 	ui.TextInput(c, &m.draftTags).Placeholder("空格或逗号分隔").Label("标签")
-	ui.TextArea(c, &m.draftText).Placeholder("在这里粘贴英文资料…").Label("正文").Grow(1).AutoFocus()
+	ui.TextArea(c, &m.draftText).Placeholder("在这里粘贴英文或中文资料…").Label("正文").Grow(1).AutoFocus()
 	ui.Row(c).Gap(8).Children(func() {
 		if ui.PrimaryButton(c, "保存并打开").Clicked() {
 			if m.saveDraft() {
@@ -236,6 +236,9 @@ func (m *model) reader(c *ui.Context) {
 		}
 	})
 
+	if !m.canRead() && m.zhText {
+		m.zhMissing(c)
+	}
 	if m.bigScreen {
 		m.bigView(c, st, sents)
 		m.controls(c, st, len(sents))
@@ -340,7 +343,7 @@ func (m *model) controls(c *ui.Context, st player.Snapshot, n int) {
 				}
 			}
 		}
-		if len(m.favorites) == 0 {
+		if len(m.langFavorites()) == 0 && m.canRead() {
 			ui.Text(c, "到「音色」里收藏常用的").FontSize(12).TextColor(t.TextMuted)
 		}
 		if ui.Select(c, &m.speedSel, speedLabels).Width(90).Label("语速").Changed() {
@@ -357,6 +360,18 @@ func (m *model) controls(c *ui.Context, st player.Snapshot, n int) {
 		ui.Textf(c, "第 %d/%d 句 · 已循环 %d 轮 · 空格 播放/暂停 · ←→ 切句", min(st.Index+1, n), n, st.Loops).
 			FontSize(12).TextColor(t.TextMuted)
 	})
+}
+
+// zhMissing says why Chinese material cannot be read yet, and offers the
+// install that fixes it: Kokoro itself (new installs read Chinese), or its
+// Chinese support.
+func (m *model) zhMissing(c *ui.Context) {
+	if m.kokoro.Check() != nil {
+		ui.Text(c, "这是中文资料，需要 Kokoro 的普通话音色来朗读。").TextColor(c.Theme().Warning)
+		m.kokoroSetupCard(c)
+		return
+	}
+	m.zhSetupCard(c)
 }
 
 // helpOverlay lists every shortcut, as Omarchy's apps do on "?".

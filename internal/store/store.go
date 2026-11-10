@@ -25,7 +25,8 @@ type Material struct {
 
 // Settings are shared by all materials.
 type Settings struct {
-	Voice      string  `json:"voice"`
+	Voice      string  `json:"voice"`             // for English material
+	ZhVoice    string  `json:"zhVoice,omitempty"` // for Chinese material
 	Speed      float64 `json:"speed"`
 	HideText   bool    `json:"hideText"`
 	LastOpened int     `json:"lastOpened"`

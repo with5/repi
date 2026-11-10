@@ -65,7 +65,11 @@ func (m *model) startInstall(s *setupState, o setup.Options) {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s.running, s.err, s.cancel, s.progress = true, "", cancel, setup.Progress{Step: 1, Steps: 6, Title: "准备"}
+	steps := 6
+	if o.Zh {
+		steps = 4
+	}
+	s.running, s.err, s.cancel, s.progress = true, "", cancel, setup.Progress{Step: 1, Steps: steps, Title: "准备"}
 	s.mu.Unlock()
 	m.saveSettings() // remembers the mirror choice
 	go func() {
@@ -98,33 +102,81 @@ func (m *model) cancelSetup(s *setupState) {
 }
 
 // applySetup, on the UI thread, puts a finished install to use: Kokoro's
-// voices appear by themselves (Check passes now); pick one if the current
-// voice is gone, and offer it while reading.
+// voices, or its Mandarin ones, appear by themselves (Check and checkZh pass
+// now); star one of each language so the reader offers it, and pick them
+// where the voice in use is gone.
 func (m *model) applySetup() {
-	s := &m.kokoroSetup
-	s.mu.Lock()
-	done := s.done
-	s.done = false
-	s.mu.Unlock()
-	if !done {
+	kokoro, zh := m.kokoroSetup.take(), m.zhSetup.take()
+	if !kokoro && !zh {
 		return
 	}
-	if m.setupErr == noTTSErr {
+	if kokoro && m.setupErr == noTTSErr {
 		m.setupErr = ""
 	}
-	if len(m.favorites) == 0 {
-		m.favorites = []string{defaultVoice}
+	m.checkZh() // a new Kokoro reads Chinese as well
+	if kokoro {
+		m.favorite(defaultVoice)
 	}
-	if !m.hasVoice(m.voice) {
-		if m.open {
-			m.applyVoiceSpeed(defaultVoice, m.speed) // also saves
-			m.voiceSel = m.voice
+	if m.zhOK {
+		m.favorite(defaultZhVoice)
+	}
+	m.repickVoices() // also saves
+}
+
+// take reports whether the install finished since it was last asked.
+func (s *setupState) take() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	done := s.done
+	s.done = false
+	return done
+}
+
+// startZhSetup adds Chinese support to the installed Kokoro.
+func (m *model) startZhSetup() {
+	m.startInstall(&m.zhSetup, setup.Options{Dir: m.kokoro.Dir, Zh: true, Mirror: m.kokoroSetup.mirror})
+}
+
+// zhSetupCard offers Chinese support while Kokoro, installed before Repi
+// read Chinese, cannot speak it.
+func (m *model) zhSetupCard(c *ui.Context) {
+	if m.kokoro.Check() != nil || m.zhOK {
+		return
+	}
+	t := c.Theme()
+	s := &m.zhSetup
+	s.mu.Lock()
+	running, p, errText := s.running, s.progress, s.err
+	s.mu.Unlock()
+	ui.Column(c.Key("zh-setup")).Padding(14, 18).Gap(8).Border(1, t.Border).Children(func() {
+		ui.Text(c, "安装中文朗读").FontSize(16).Bold()
+		ui.Textf(c, "让 Kokoro 朗读中文资料：再下载%s（中文分词和 8 个普通话音色），装进现有的 Kokoro 环境，英文朗读不受影响。",
+			setup.EstimateZhSize()).TextColor(t.TextMuted).Wrap()
+		if errText != "" {
+			ui.Text(c, errText).TextColor(t.Danger).Wrap()
+		}
+		if running {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Spinner(c)
+				ui.Textf(c, "第 %d/%d 步：%s", p.Step, p.Steps, p.Title)
+			})
+			if p.Detail != "" {
+				ui.Text(c, p.Detail).FontSize(12).TextColor(t.TextMuted).MaxLines(1)
+			}
+			if ui.Button(c.Key("cancel-zh"), "取消").Clicked() {
+				m.cancelSetup(s)
+			}
 			return
 		}
-		m.voice = defaultVoice
-	}
-	m.voiceSel = m.voice
-	m.saveSettings()
+		ui.Checkbox(c.Key("zh-mirror"), &m.kokoroSetup.mirror, "使用国内镜像")
+		label := "安装中文朗读"
+		if errText != "" {
+			label = "重试"
+		}
+		if ui.PrimaryButton(c, label).Clicked() {
+			m.startZhSetup()
+		}
+	})
 }
 
 // kokoroSetupCard offers the one-click install while Kokoro is missing.
