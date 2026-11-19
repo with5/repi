@@ -30,6 +30,7 @@ Listening skill comes from hearing the same material many times, not from hearin
 - 🎙️ **Your own voice** — record about 10 seconds (or import a clip) and Repi reads in that voice, cloned locally with [Chatterbox](https://github.com/resemble-ai/chatterbox).
 - 🎤 **Karaoke big screen** — large type, the word being spoken is highlighted, unread words are dimmed.
 - 📖 **Click any word to look it up** — playback pauses, a card shows IPA, Chinese definitions, exam tags (CET-4, IELTS…) and word forms. Inflections like `went` / `running` resolve to their lemma. Powered by an offline [ECDICT](https://github.com/skywind3000/ECDICT) index.
+- ⭐ **Word book** — save a looked-up word with the sentence you met it in, then review it with spaced repetition (SM-2): Repi reads that sentence aloud and you grade how well you remembered.
 - 🌐 **Inline translation** — toggle a Chinese line under the current sentence; each sentence is translated once and cached.
 - 🙈 **Hide text** — listen only, no peeking.
 - ⚡ **Fast and light** — a single native binary written in Go, no Electron, no webview. The model is loaded once and kept resident.
@@ -102,6 +103,10 @@ The **Voices** panel lets you audition every voice (with your own sample sentenc
 ### Offline dictionary
 
 On first lookup, click **Download dictionary** on the card (66 MB download, 28 MB indexed). After that, no network is needed.
+
+### Word book
+
+Click **加入生词本** (Add to word book) on a word card. An inflection is saved by its base form (`went` → `go`), together with the sentence you clicked it in. The **生词** (Words) button in the sidebar shows how many words are due today. In a review, Repi reads the sentence aloud in your English voice; press `Space` to see the meaning, then `1`–`4` (forgot / hard / good / easy) to decide when it comes back; `R` plays the sentence again. A forgotten word comes back later in the same session. Words are stored in `materials.json`.
 
 ### Where data lives
 

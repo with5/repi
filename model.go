@@ -96,7 +96,9 @@ type model struct {
 	showHelp    bool         // the shortcut overlay is open
 	listenID    atomic.Int64 // material whose sentences the player is playing
 	showStats   bool         // the statistics panel replaces the main area
-	dailyGoal   int          // minutes of listening aimed for each day; 0 means none
+	showWords   bool         // the word book replaces the main area
+	words       wordsState
+	dailyGoal   int // minutes of listening aimed for each day; 0 means none
 
 	query       string // search box
 	tagFilter   string // tag chosen in the sidebar

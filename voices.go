@@ -179,14 +179,20 @@ func (m *model) stopAudition() {
 // audition speaks the sample in voice, stopping the reader and any other
 // sample first.
 func (m *model) audition(voice string) {
+	m.say(voice, sampleFor(m.sample, voice), voice)
+}
+
+// say speaks text in voice the way audition does; key is what
+// auditionState reports while it is made and played.
+func (m *model) say(key, sample, voice string) {
 	m.pl.Pause()
 	m.stopAudition()
 	ctx, cancel := context.WithCancel(context.Background())
 	m.aud.mu.Lock()
-	m.aud.cancel, m.aud.voice, m.aud.state, m.aud.err = cancel, voice, "合成中", ""
+	m.aud.cancel, m.aud.voice, m.aud.state, m.aud.err = cancel, key, "合成中", ""
 	gen := m.aud.gen
 	m.aud.mu.Unlock()
-	sample, speed := sampleFor(m.sample, voice), m.speed
+	speed := m.speed
 
 	// set changes the state only while this sample is still the current one.
 	set := func(f func()) {

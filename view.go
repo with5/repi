@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -34,14 +35,16 @@ func (m *model) view(c *ui.Context) {
 		if c.Shortcut(0, ui.KeyQ) {
 			mygo.App.Quit()
 		}
-		if c.Shortcut(0, ui.KeySpace) {
-			m.pl.Toggle()
-		}
-		if c.Shortcut(0, ui.KeyRight) {
-			m.pl.Next()
-		}
-		if c.Shortcut(0, ui.KeyLeft) {
-			m.pl.Prev()
+		if !m.reviewing() { // a review takes Space for itself
+			if c.Shortcut(0, ui.KeySpace) {
+				m.pl.Toggle()
+			}
+			if c.Shortcut(0, ui.KeyRight) {
+				m.pl.Next()
+			}
+			if c.Shortcut(0, ui.KeyLeft) {
+				m.pl.Prev()
+			}
 		}
 		if m.open && c.Shortcut(0, ui.KeyF) {
 			m.setBigScreen(!m.bigScreen)
@@ -68,6 +71,8 @@ func (m *model) view(c *ui.Context) {
 			switch {
 			case m.showStats:
 				m.statsPanel(c)
+			case m.showWords:
+				m.wordsPanel(c)
 			case m.showVoices:
 				m.voicePanel(c)
 			case m.editing:
@@ -113,27 +118,29 @@ func (m *model) sidebar(c *ui.Context) {
 				label = "← 返回"
 			}
 			if ui.Button(c, label).Label("音色管理").Grow(1).Clicked() {
-				m.showVoices = !m.showVoices
-				m.showStats = false
-				if !m.showVoices {
-					m.stopAudition()
-				}
+				m.showPanel(&m.showVoices)
 			}
 			label = "统计"
 			if m.showStats {
 				label = "← 返回"
 			}
 			if ui.Button(c.Key("stats"), label).Label("学习统计").Grow(1).Clicked() {
-				m.showStats = !m.showStats
-				m.showVoices = false
-				m.stopAudition()
+				m.showPanel(&m.showStats)
+			}
+			label = "生词"
+			if m.showWords {
+				label = "← 返回"
+			} else if n := m.st.DueCount(time.Now()); n > 0 {
+				label = "生词 " + strconv.Itoa(n)
+			}
+			if ui.Button(c.Key("words"), label).Label("生词本").Grow(1).Clicked() {
+				m.showPanel(&m.showWords)
 			}
 		})
 		if chosen != sel {
 			if id, err := strconv.Atoi(chosen); err == nil {
 				if mat, ok := m.st.Get(id); ok {
-					m.showVoices, m.showStats = false, false
-					m.stopAudition()
+					m.closePanels()
 					m.openMaterial(mat)
 				}
 			}
@@ -141,10 +148,26 @@ func (m *model) sidebar(c *ui.Context) {
 	})
 }
 
+// showPanel toggles the panel that flag shows in the main area, closing
+// the others.
+func (m *model) showPanel(flag *bool) {
+	on := !*flag
+	m.closePanels()
+	*flag = on
+}
+
+// closePanels gives the main area back to the material.
+func (m *model) closePanels() {
+	m.showVoices, m.showStats, m.showWords = false, false, false
+	m.endReview()
+}
+
+// reviewing reports whether a word review has the main area.
+func (m *model) reviewing() bool { return m.showWords && m.words.reviewing }
+
 // startEdit opens the editor on mat, with clip as the text of a new one.
 func (m *model) startEdit(mat store.Material, clip string) {
-	m.showVoices, m.showStats = false, false
-	m.stopAudition()
+	m.closePanels()
 	m.editing, m.editID = true, mat.ID
 	m.draftTitle, m.draftText = mat.Title, mat.Text
 	m.draftTags = strings.Join(mat.Tags, " ")
@@ -385,7 +408,9 @@ func (m *model) helpOverlay(c *ui.Context) {
 				{"← →", "上一句 / 下一句"},
 				{"F", "大屏显示"},
 				{"T", "大屏里显示 / 隐藏整句翻译"},
-				{"点单词", "大屏里查词（朗读暂停，关闭后继续）"},
+				{"点单词", "大屏里查词（朗读暂停，关闭后继续），可加入生词本"},
+				{"空格 1–4", "复习生词时：显示释义 / 打分"},
+				{"R", "复习生词时：再听一遍例句"},
 				{"/", "搜索资料"},
 				{"P", "置顶 / 取消置顶"},
 				{"?", "显示 / 关闭本页"},

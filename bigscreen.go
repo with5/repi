@@ -145,7 +145,7 @@ func (m *model) bigView(c *ui.Context, st player.Snapshot, sents []string) {
 						}
 					})
 					if lookup && w.Clicked() {
-						m.openLookup(tk.Text, st.Playing)
+						m.openLookup(tk.Text, sents[idx], st.Playing)
 					}
 				}
 			})

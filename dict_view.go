@@ -47,6 +47,7 @@ type lookupCard struct {
 	shown     bool // the card was open in the last frame
 	resume    bool // reading was on when the card opened
 	token     string
+	sentence  string // where token was clicked, kept with a saved word
 	res       dict.Result
 	found     bool
 	installed bool
@@ -118,8 +119,8 @@ func (m *model) downloadDict() {
 
 // openLookup shows the word card for a word clicked on the big screen, and
 // pauses the reading until the card is closed.
-func (m *model) openLookup(token string, playing bool) {
-	m.lookup.token, m.lookup.resume = token, playing
+func (m *model) openLookup(token, sentence string, playing bool) {
+	m.lookup.token, m.lookup.sentence, m.lookup.resume = token, sentence, playing
 	m.refreshLookup()
 	m.lookup.open = true
 	m.pl.Pause()
@@ -152,6 +153,7 @@ func (m *model) lookupOverlay(c *ui.Context) {
 				ui.Text(c, "词典里没有这个词。").TextColor(t.TextMuted)
 			default:
 				entryView(c, lk.res)
+				m.saveWordButton(c)
 			}
 			ui.Text(c, "Esc 关闭，之后继续朗读").FontSize(11).TextColor(t.TextMuted)
 		})

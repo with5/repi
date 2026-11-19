@@ -52,6 +52,8 @@ type file struct {
 	// PerMaterial is the time heard per material ID, in milliseconds. It is
 	// kept apart from Material so that saving a stale copy cannot reset it.
 	PerMaterial map[int]int64 `json:"perMaterial,omitempty"`
+	// Words are the saved words, oldest first.
+	Words []*Word `json:"words,omitempty"`
 }
 
 // Store is safe for use from several goroutines.
