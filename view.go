@@ -243,6 +243,7 @@ func (m *model) reader(c *ui.Context) {
 		if ui.Button(c, pin).Clicked() {
 			m.togglePin()
 		}
+		m.exportButton(c)
 		if ui.Button(c, "大屏").Label("大屏显示").Clicked() {
 			m.setBigScreen(!m.bigScreen)
 		}
@@ -259,6 +260,7 @@ func (m *model) reader(c *ui.Context) {
 		}
 	})
 
+	m.exportNote(c)
 	if !m.canRead() && m.zhText {
 		m.zhMissing(c)
 	}

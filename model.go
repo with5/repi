@@ -98,6 +98,7 @@ type model struct {
 	showStats   bool         // the statistics panel replaces the main area
 	showWords   bool         // the word book replaces the main area
 	words       wordsState
+	export      exportState
 	dailyGoal   int // minutes of listening aimed for each day; 0 means none
 
 	query       string // search box

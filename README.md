@@ -108,6 +108,30 @@ On first lookup, click **Download dictionary** on the card (66 MB download, 28 M
 
 Click **加入生词本** (Add to word book) on a word card. An inflection is saved by its base form (`went` → `go`), together with the sentence you clicked it in. The **生词** (Words) button in the sidebar shows how many words are due today. In a review, Repi reads the sentence aloud in your English voice; press `Space` to see the meaning, then `1`–`4` (forgot / hard / good / easy) to decide when it comes back; `R` plays the sentence again. A forgotten word comes back later in the same session. Words are stored in `materials.json`.
 
+### Listening on the phone
+
+Open a material and click **导出到手机** (Export to phone). Repi synthesizes any sentences it has not yet, and saves a `.repi` file: the audio of every sentence (Opus when `ffmpeg` is installed, about a tenth the size of WAV), the word timings of the big screen and any translations already fetched (all of them when translation is on). Send the file to your phone however you like and open it with the Repi Android app in [`android/`](android). It plays in the background and from the lock screen, with headset buttons, the loop modes and the word-by-word highlight, and needs no network.
+
+```sh
+cd android && ./gradlew assembleRelease   # app/build/outputs/apk/release/app-release.apk
+```
+
+It needs JDK 21 and the Android SDK (platform 37.2); set `sdk.dir` in `android/local.properties` or `ANDROID_HOME`.
+
+### Synthesizing for the phone over the network
+
+A computer with a GPU can do the synthesis for the phone (or any other client):
+
+```sh
+repi serve            # listens on :7849; --addr to change, --new-token to replace the token
+```
+
+It prints this computer's addresses and a token (saved in `server-token` next to `materials.json`). In the Android app tap **电脑合成** (Synthesize on computer), enter the address and token, then paste English or Chinese text, pick one of the computer's voices (tap ▶ to audition it) and tap the button; the computer makes a pack and the phone imports it. All voices are offered, cloned ones included, and the audio cache is shared with the desktop app. The phone and the computer must be on the same network, and the port must be open in the firewall (`sudo ufw allow 7849/tcp`); over USB, `adb reverse tcp:7849 tcp:7849` and the address `127.0.0.1:7849` work too. The HTTP API is described in [`internal/server/server.go`](internal/server/server.go). It is plain HTTP with a token, meant for your own network: do not expose it to the internet as it is.
+
+The same screen also syncs the desktop's library: the **电脑上的材料** (Materials on the computer) tab lists every material with whether the phone has it, has it up to date, or has an older text. **同步全部** (Sync all) brings over every missing or changed one, read in the voice and speed the desktop app uses, so sentences already synthesized on the desktop are not made again. An updated material replaces the phone's old copy and keeps where you were. Packs made this way carry `"source"` in their manifest (see [`internal/pack/pack.go`](internal/pack/pack.go)).
+
+**资讯** (News) in the app lists the latest posts of OpenAI, Anthropic, Google AI, Google DeepMind, Google Research and Hugging Face, newest first; filter by source, pull down to refresh, tap a post to read it, and **让电脑读，加入材料** (Have the computer read it) turns it into a material in your English voice. The computer fetches the feeds (Anthropic has none, so its news page is read) and extracts the articles, so the phone needs no access to those sites. The sources are listed in [`internal/feed/feed.go`](internal/feed/feed.go).
+
 ### Where data lives
 
 | What | Path |
@@ -140,6 +164,7 @@ internal/
 
 ```sh
 go test ./...
+cd android && ./gradlew testDebugUnitTest
 ```
 
 Design notes live in [`docs/superpowers/specs`](docs/superpowers/specs).

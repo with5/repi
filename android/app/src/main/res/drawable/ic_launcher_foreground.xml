@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The R-with-a-play-arrow of assets/icon.svg, inside the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="256"
+    android:viewportHeight="256">
+    <group
+        android:pivotX="128"
+        android:pivotY="128"
+        android:scaleX="0.85"
+        android:scaleY="0.85"
+        android:translateX="4"
+        android:translateY="-4">
+        <path
+            android:pathData="M72,48V208M72,48H132A48,48 0,0 1,132 144H108M112,144L172,208"
+            android:strokeWidth="24"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="60" android:startY="220"
+                    android:endX="196" android:endY="40"
+                    android:startColor="#2f7a52"
+                    android:endColor="#9cf0bd" />
+            </aapt:attr>
+        </path>
+        <path
+            android:pathData="M110,126V162L80,144Z"
+            android:strokeWidth="6"
+            android:strokeLineJoin="round">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="60" android:startY="220"
+                    android:endX="196" android:endY="40"
+                    android:startColor="#2f7a52"
+                    android:endColor="#9cf0bd" />
+            </aapt:attr>
+            <aapt:attr name="android:strokeColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="60" android:startY="220"
+                    android:endX="196" android:endY="40"
+                    android:startColor="#2f7a52"
+                    android:endColor="#9cf0bd" />
+            </aapt:attr>
+        </path>
+    </group>
+</vector>

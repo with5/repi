@@ -22,6 +22,12 @@ func main() {
 		fmt.Println("repi", version)
 		return
 	}
+	if len(os.Args) >= 2 && os.Args[1] == "serve" {
+		if err := serve(os.Args[2:]); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	audio.SetLatency(audio.LatencyPlayback) // long listening: ride out hiccups
 	m := newModel(player.SoundCard{})
 	mygo.App.OnQuit(func() {

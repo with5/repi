@@ -108,6 +108,30 @@ go build -o repi . && ./repi
 
 在词典卡片上点「加入生词本」。变形词按原形收藏（`went` → `go`），并记下你点它时所在的句子。侧边栏的「生词」按钮会显示今天要复习几个词。复习时，Repi 用你的英文音色朗读那句话；按 `空格` 看释义，再按 `1`–`4`（忘了 / 模糊 / 记得 / 简单）决定下次什么时候复习，按 `R` 再听一遍。忘了的词会在本轮最后再出现一次。生词保存在 `materials.json` 里。
 
+### 在手机上听
+
+打开一篇材料，点「导出到手机」。Repi 会把还没合成的句子合成完，然后保存成一个 `.repi` 文件，里面有每一句的音频（装了 `ffmpeg` 时用 Opus 编码，大约是 WAV 的十分之一）、大屏逐词高亮用的时间点，以及已经翻译过的句子（开着翻译时会把全部句子都翻译好）。用任何方式把文件发到手机上，再用 [`android/`](android) 里的 Repi 安卓应用打开就能听。它支持后台和锁屏播放、耳机按键、两种循环模式和逐词高亮，全程不用联网。
+
+```sh
+cd android && ./gradlew assembleRelease   # 生成 app/build/outputs/apk/release/app-release.apk
+```
+
+编译需要 JDK 21 和 Android SDK（platform 37.2），在 `android/local.properties` 里设置 `sdk.dir`，或者设置 `ANDROID_HOME`。
+
+### 让电脑通过网络给手机合成
+
+有显卡的电脑可以替手机（或其他客户端）做语音合成：
+
+```sh
+repi serve            # 监听 :7849；--addr 改地址，--new-token 换一个新令牌
+```
+
+它会显示本机地址和令牌（令牌保存在 `materials.json` 旁边的 `server-token` 里）。在安卓应用里点「电脑合成」，填上地址和令牌，然后粘贴英文或中文，从电脑的音色里挑一个（点 ▶ 试听），点按钮，电脑就会合成好一个材料包，手机自动导入。电脑上的所有音色都能用，包括克隆的声音，音频缓存和桌面版共用。手机和电脑要在同一个网络，防火墙要放行端口（`sudo ufw allow 7849/tcp`）；用 USB 连着时，也可以运行 `adb reverse tcp:7849 tcp:7849`，地址填 `127.0.0.1:7849`。HTTP 接口说明见 [`internal/server/server.go`](internal/server/server.go)。它是带令牌的明文 HTTP，只适合在自己的局域网里用，不要直接暴露到公网。
+
+同一个页面还能同步电脑上的资料库：「电脑上的材料」标签列出每一篇材料，标明手机上还没有、已同步，还是电脑上改过。点「同步全部」会把没同步的和改过的都拿过来，用电脑版里设定的音色和语速来读，所以电脑上已经合成过的句子不会再合成一遍。更新后的材料会替换手机上的旧版本，并保留听到的位置。这样生成的材料包在 manifest 里带有 `"source"` 字段（见 [`internal/pack/pack.go`](internal/pack/pack.go)）。
+
+应用里的「资讯」列出 OpenAI、Anthropic、Google AI、Google DeepMind、Google Research 和 Hugging Face 的最新文章，按时间排列；可以按来源筛选，下拉刷新，点开就能读，点「让电脑读，加入材料」就用你的英文音色做成材料。订阅源由电脑抓取（Anthropic 没有 RSS，读的是它的新闻页面），正文也由电脑提取，所以手机不需要能访问这些网站。来源列表在 [`internal/feed/feed.go`](internal/feed/feed.go) 里。
+
 ### 数据位置
 
 | 内容 | 路径 |
@@ -140,6 +164,7 @@ internal/
 
 ```sh
 go test ./...
+cd android && ./gradlew testDebugUnitTest
 ```
 
 设计文档见 [`docs/superpowers/specs`](docs/superpowers/specs)。

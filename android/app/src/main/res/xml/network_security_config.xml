@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- repi serve runs on the user's own computer, on the home network, over
+     plain HTTP: there is no certificate for a LAN address. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
